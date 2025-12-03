@@ -22,7 +22,7 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # 版本信息
-VERSION="1.0.0"
+VERSION="1.1.0"
 GITHUB_REPO="https://github.com/cookabc/certbot-manager"
 
 # 显示帮助信息
