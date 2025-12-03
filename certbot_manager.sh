@@ -40,6 +40,8 @@ show_help() {
     echo "  uninstall        卸载certbot"
     echo "  reinstall         重新安装certbot"
     echo "  create <domain>  为域名创建SSL证书"
+    echo "  cert-uninstall <domain>  卸载SSL证书"
+    echo "  cert-reinstall <domain> 重新安装SSL证书"
     echo "  renew            手动续期证书"
     echo "  renew-setup      设置自动续期"
     echo "  nginx-check      检查nginx配置"
@@ -687,6 +689,330 @@ certbot_management() {
     done
 }
 
+# 列出所有证书供选择
+list_certificates_for_selection() {
+    print_status "info" "获取已安装的证书列表..."
+
+    if ! command -v certbot &> /dev/null; then
+        print_status "error" "Certbot未安装"
+        return 1
+    fi
+
+    if ! check_root; then
+        print_status "warning" "需要sudo权限查看证书列表"
+        print_status "info" "请运行: sudo $0 cert-uninstall"
+        return 1
+    fi
+
+    local cert_output=$(sudo certbot certificates 2>/dev/null)
+    if [[ -z "$cert_output" || "$cert_output" == *"No certificates found"* ]]; then
+        print_status "info" "暂无已安装的证书"
+        return 1
+    fi
+
+    local domains=()
+    while IFS= read -r line; do
+        if [[ "$line" == *"Certificate Name:"* ]]; then
+            domain=$(echo "$line" | awk '{print $3}')
+            domains+=("$domain")
+        fi
+    done <<< "$cert_output"
+
+    if [[ ${#domains[@]} -eq 0 ]]; then
+        print_status "info" "暂无已安装的证书"
+        return 1
+    fi
+
+    print_status "info" "已安装的证书："
+    for i in "${!domains[@]}"; do
+        echo "  $((i+1))) ${domains[i]}"
+    done
+
+    # 返回域名数组
+    printf '%s\n' "${domains[@]}"
+    return 0
+}
+
+# 卸载SSL证书
+uninstall_certificate() {
+    local domain=$1
+
+    print_status "title" "卸载SSL证书"
+    echo "=================================================="
+
+    if [[ -n "$domain" ]]; then
+        # 命令行模式，直接使用指定域名
+        local target_domain="$domain"
+    else
+        # 交互式模式，让用户选择证书
+        print_status "info" "选择要卸载的SSL证书："
+        local domains=()
+        readarray -t domains < <(list_certificates_for_selection)
+
+        if [[ ${#domains[@]} -eq 0 ]]; then
+            read -p "按回车键返回..."
+            return 2
+        fi
+
+        echo ""
+        if ! target_domain=$(get_user_input "请输入要卸载的域名或编号: " false "domain"); then
+            case $? in
+                1) print_status "info" "返回上级菜单"; return 2 ;;
+                2) print_status "warning" "操作已取消"; return 2 ;;
+            esac
+        fi
+
+        # 如果输入的是编号，转换为域名
+        if [[ "$target_domain" =~ ^[0-9]+$ ]]; then
+            local index=$((target_domain - 1))
+            if [[ $index -ge 0 && $index -lt ${#domains[@]} ]]; then
+                target_domain="${domains[$index]}"
+            else
+                print_status "error" "无效的编号"
+                read -p "按回车键返回..."
+                return 2
+            fi
+        fi
+
+        # 验证域名是否在列表中
+        local found=false
+        for d in "${domains[@]}"; do
+            if [[ "$d" == "$target_domain" ]]; then
+                found=true
+                break
+            fi
+        done
+
+        if ! $found; then
+            print_status "error" "域名 $target_domain 没有对应的SSL证书"
+            read -p "按回车键返回..."
+            return 2
+        fi
+    fi
+
+    # 显示证书信息
+    print_status "info" "即将卸载的SSL证书："
+    print_status "info" "  域名: $target_domain"
+    print_status "info" "  证书路径: /etc/letsencrypt/live/$target_domain/"
+    print_status "info" "  配置文件: /etc/letsencrypt/renewal/$target_domain.conf"
+    echo ""
+
+    # 警告信息
+    print_status "warning" "⚠️  重要提醒："
+    print_status "warning" "  卸载SSL证书将会："
+    print_status "warning" "  • 删除证书文件"
+    print_status "warning" "  • 删除私钥文件"
+    print_status "warning" "  • 移除续期配置"
+    print_status "warning" "  • 需要手动更新Nginx配置"
+    print_status "warning" "  这将导致HTTPS网站无法访问！"
+    echo ""
+
+    # 确认操作
+    if ! confirm_action "确认要卸载域名 $target_domain 的SSL证书吗？"; then
+        case $? in
+            1) print_status "info" "操作已取消"; return 2 ;;
+            2) print_status "warning" "操作已取消"; return 2 ;;
+        esac
+    fi
+
+    print_status "info" "开始卸载SSL证书..."
+
+    if ! check_root; then
+        print_status "error" "需要root权限进行卸载"
+        print_status "info" "请运行: sudo $0 cert-uninstall $target_domain"
+        read -p "按回车键返回..."
+        return 2
+    fi
+
+    # 删除证书文件
+    print_status "info" "删除证书文件..."
+    if sudo certbot delete --cert-name "$target_domain" 2>/dev/null; then
+        print_status "success" "SSL证书卸载成功！"
+        print_status "info" "证书文件已从系统中删除"
+        print_status "warning" "请记得手动更新Nginx配置文件，移除SSL相关配置"
+        print_status "info" "Nginx配置通常位于: /etc/nginx/sites-available/ 或 /etc/nginx/conf.d/"
+    else
+        # 备用方案：手动删除
+        print_status "warning" "使用certbot delete失败，尝试手动删除..."
+
+        local cert_dir="/etc/letsencrypt/live/$target_domain"
+        local archive_dir="/etc/letsencrypt/archive/$target_domain"
+        local renewal_file="/etc/letsencrypt/renewal/$target_domain.conf"
+
+        sudo rm -rf "$cert_dir" 2>/dev/null || true
+        sudo rm -rf "$archive_dir" 2>/dev/null || true
+        sudo rm -f "$renewal_file" 2>/dev/null || true
+
+        print_status "success" "SSL证书手动删除完成"
+        print_status "warning" "请记得手动更新Nginx配置"
+    fi
+
+    # 检查nginx配置并建议修改
+    if command -v nginx &> /dev/null; then
+        echo ""
+        print_status "info" "建议的后续操作："
+        print_status "info" "1. 编辑Nginx配置文件，移除SSL配置"
+        print_status "info" "2. 重新加载Nginx配置: sudo nginx -s reload"
+        print_status "info" "3. 测试网站访问是否正常"
+    fi
+}
+
+# 重新安装SSL证书
+reinstall_certificate() {
+    local domain=$1
+
+    print_status "title" "重新安装SSL证书"
+    echo "=================================================="
+
+    if [[ -n "$domain" ]]; then
+        # 命令行模式，直接使用指定域名
+        local target_domain="$domain"
+    else
+        # 交互式模式，让用户选择证书
+        print_status "info" "选择要重新安装的SSL证书："
+        local domains=()
+        readarray -t domains < <(list_certificates_for_selection)
+
+        if [[ ${#domains[@]} -eq 0 ]]; then
+            print_status "info" "没有找到可以重新安装的证书"
+            print_status "info" "您可以创建新的SSL证书"
+            read -p "按回车键返回..."
+            return 2
+        fi
+
+        echo ""
+        if ! target_domain=$(get_user_input "请输入要重新安装的域名或编号: " false "domain"); then
+            case $? in
+                1) print_status "info" "返回上级菜单"; return 2 ;;
+                2) print_status "warning" "操作已取消"; return 2 ;;
+            esac
+        fi
+
+        # 如果输入的是编号，转换为域名
+        if [[ "$target_domain" =~ ^[0-9]+$ ]]; then
+            local index=$((target_domain - 1))
+            if [[ $index -ge 0 && $index -lt ${#domains[@]} ]]; then
+                target_domain="${domains[$index]}"
+            else
+                print_status "error" "无效的编号"
+                read -p "按回车键返回..."
+                return 2
+            fi
+        fi
+
+        # 验证域名是否在列表中
+        local found=false
+        for d in "${domains[@]}"; do
+            if [[ "$d" == "$target_domain" ]]; then
+                found=true
+                break
+            fi
+        done
+
+        if ! $found; then
+            print_status "error" "域名 $target_domain 没有对应的SSL证书"
+            read -p "按回车键返回..."
+            return 2
+        fi
+    fi
+
+    print_status "info" "重新安装SSL证书将会："
+    print_status "info" "  • 先删除现有的SSL证书"
+    print_status "info" "  • 重新创建新的SSL证书"
+    print_status "warning" "⚠️  这将暂时影响HTTPS访问"
+    echo ""
+
+    # 确认操作
+    if ! confirm_action "确认要重新安装域名 $target_domain 的SSL证书吗？"; then
+        case $? in
+            1) print_status "info" "操作已取消"; return 2 ;;
+            2) print_status "warning" "操作已取消"; return 2 ;;
+        esac
+    fi
+
+    # 先删除现有证书
+    print_status "info" "正在删除现有SSL证书..."
+    uninstall_certificate "$target_domain"
+    local uninstall_result=$?
+
+    if [[ $uninstall_result -eq 1 ]]; then
+        print_status "error" "删除现有证书失败，重新安装终止"
+        return 1
+    fi
+
+    echo ""
+    print_status "info" "正在重新创建SSL证书..."
+
+    # 重新创建证书
+    create_certificate "$target_domain"
+    local install_result=$?
+
+    if [[ $install_result -eq 0 ]]; then
+        print_status "success" "SSL证书重新安装成功！"
+        print_status "info" "新证书已安装并配置完成"
+    else
+        print_status "error" "SSL证书重新安装失败"
+        return 1
+    fi
+}
+
+# 证书管理子菜单
+certificate_management() {
+    while true; do
+        clear
+        echo "🔧 Certbot SSL证书管理工具 - 证书管理"
+        echo "=================================================="
+        echo ""
+        echo "请选择操作:"
+        echo "1) 安装SSL证书"
+        echo "2) 卸载SSL证书"
+        echo "3) 重新安装SSL证书"
+        echo "4) 返回主菜单"
+        echo ""
+        echo "💡 提示: 在任何输入步骤中都可以输入 'back' 返回或 'cancel' 取消"
+        echo ""
+        read -p "请输入选项 (1-4): " choice
+
+        case $choice in
+            1)
+                create_certificate ""
+                local install_result=$?
+                if [[ $install_result -eq 2 ]]; then
+                    continue
+                fi
+                read -p "按回车键继续..."
+                ;;
+            2)
+                uninstall_certificate ""
+                local uninstall_result=$?
+                if [[ $uninstall_result -eq 2 ]]; then
+                    continue
+                fi
+                read -p "按回车键继续..."
+                ;;
+            3)
+                reinstall_certificate ""
+                local reinstall_result=$?
+                if [[ $reinstall_result -eq 2 ]]; then
+                    continue
+                fi
+                read -p "按回车键继续..."
+                ;;
+            4)
+                return 0
+                ;;
+            "q"|"Q"|"back"|"返回")
+                print_status "info" "返回主菜单"
+                return 0
+                ;;
+            *)
+                print_status "error" "无效选项，请重新选择"
+                sleep 2
+                ;;
+        esac
+    done
+}
+
 # 手动续期证书
 renew_certificates() {
     print_status "title" "续期证书"
@@ -815,16 +1141,17 @@ interactive_menu() {
         echo "1) 显示系统状态"
         echo "2) 列出已安装证书"
         echo "3) Certbot管理"
-        echo "4) 创建SSL证书"
-        echo "5) 续期证书"
-        echo "6) 设置自动续期"
-        echo "7) 检查nginx配置"
-        echo "8) 帮助信息"
-        echo "9) 退出"
+        echo "4) 证书管理"
+        echo "5) 创建SSL证书"
+        echo "6) 续期证书"
+        echo "7) 设置自动续期"
+        echo "8) 检查nginx配置"
+        echo "9) 帮助信息"
+        echo "10) 退出"
         echo ""
         echo "💡 提示: 在任何输入步骤中都可以输入 'back' 返回或 'cancel' 取消"
         echo ""
-        read -p "请输入选项 (1-9): " choice
+        read -p "请输入选项 (1-10): " choice
 
         case $choice in
             1)
@@ -839,6 +1166,9 @@ interactive_menu() {
                 certbot_management
                 ;;
             4)
+                certificate_management
+                ;;
+            5)
                 create_certificate ""
                 local cert_result=$?
                 if [[ $cert_result -eq 2 ]]; then
@@ -847,23 +1177,23 @@ interactive_menu() {
                 fi
                 read -p "按回车键继续..."
                 ;;
-            5)
+            6)
                 renew_certificates
                 read -p "按回车键继续..."
                 ;;
-            6)
+            7)
                 setup_auto_renew
                 read -p "按回车键继续..."
                 ;;
-            7)
+            8)
                 check_nginx
                 read -p "按回车键继续..."
                 ;;
-            8)
+            9)
                 show_help
                 read -p "按回车键继续..."
                 ;;
-            9)
+            10)
                 if confirm_action "确定要退出程序吗？"; then
                     print_status "info" "退出程序"
                     exit 0
@@ -901,6 +1231,12 @@ main() {
             ;;
         "create")
             create_certificate "$2"
+            ;;
+        "cert-uninstall")
+            uninstall_certificate "$2"
+            ;;
+        "cert-reinstall")
+            reinstall_certificate "$2"
             ;;
         "renew")
             renew_certificates
