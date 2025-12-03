@@ -153,9 +153,27 @@ get_user_input() {
                 fi
                 ;;
             "domain")
+                # 检查是否包含中文或其他非ASCII字符
+                if [[ "$user_input" =~ [^a-zA-Z0-9.\-*] ]]; then
+                    print_status "error" "域名包含不支持的字符或中文，请使用英文域名"
+                    print_status "info" "提示: 国际化域名需要转换为Punycode格式"
+                    print_status "info" "输入 'back' 返回上级菜单，输入 'cancel' 取消操作"
+                    continue
+                fi
+
+                # 检查通配符域名
+                if [[ "$user_input" == "*"* ]]; then
+                    print_status "error" "暂不支持通配符域名（*.example.com）"
+                    print_status "info" "请输入具体的域名（如：example.com）"
+                    print_status "info" "输入 'back' 返回上级菜单，输入 'cancel' 取消操作"
+                    continue
+                fi
+
+                # 基本域名格式验证
                 if [[ ! "$user_input" =~ ^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$ ]]; then
                     print_status "error" "域名格式不正确，请重新输入"
-                    print_status "info" "提示: 输入 'back' 返回上级菜单，输入 'cancel' 取消操作"
+                    print_status "info" "正确格式示例: example.com, sub.example.org"
+                    print_status "info" "输入 'back' 返回上级菜单，输入 'cancel' 取消操作"
                     continue
                 fi
                 ;;
