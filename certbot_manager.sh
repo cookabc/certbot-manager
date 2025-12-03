@@ -37,6 +37,8 @@ show_help() {
     echo "  status           显示系统状态"
     echo "  list             列出已安装证书"
     echo "  install          安装certbot"
+    echo "  uninstall        卸载certbot"
+    echo "  reinstall         重新安装certbot"
     echo "  create <domain>  为域名创建SSL证书"
     echo "  renew            手动续期证书"
     echo "  renew-setup      设置自动续期"
@@ -461,6 +463,230 @@ create_certificate() {
     fi
 }
 
+# 卸载certbot
+uninstall_certbot() {
+    print_status "title" "卸载Certbot"
+    echo "=================================================="
+
+    if ! command -v certbot &> /dev/null; then
+        print_status "info" "Certbot未安装，无需卸载"
+        read -p "按回车键返回..."
+        return 2
+    fi
+
+    # 获取certbot版本信息
+    local certbot_version=$(certbot --version 2>/dev/null || echo "未知版本")
+    print_status "info" "当前Certbot版本: $certbot_version"
+
+    # 警告用户
+    echo ""
+    print_status "warning" "⚠️  重要提醒："
+    print_status "warning" "  卸载Certbot将会："
+    print_status "warning" "  • 删除certbot程序文件"
+    print_status "warning" "  • 删除所有已安装的SSL证书（可选）"
+    print_status "warning" "  • 移除自动续期配置"
+    print_status "warning" "  这将导致所有HTTPS网站无法访问！"
+    echo ""
+
+    # 询问是否删除证书
+    local delete_certs=false
+    if confirm_action "是否同时删除所有SSL证书？"; then
+        case $? in
+            0) delete_certs=true ;;
+            1|2) print_status "info" "保留SSL证书文件" ;;
+        esac
+    fi
+
+    # 最终确认
+    echo ""
+    print_status "info" "即将执行的操作："
+    print_status "info" "  • 卸载Certbot程序"
+    if $delete_certs; then
+        print_status "info" "  • 删除所有SSL证书"
+    fi
+    print_status "info" "  • 移除自动续期配置"
+    echo ""
+
+    if ! confirm_action "确认要卸载Certbot吗？此操作不可逆！"; then
+        case $? in
+            1) print_status "info" "操作已取消"; return 2 ;;
+            2) print_status "warning" "操作已取消"; return 2 ;;
+        esac
+    fi
+
+    print_status "info" "开始卸载Certbot..."
+
+    local uninstall_success=false
+
+    # 根据安装方式选择卸载方法
+    if [[ -f /etc/debian_version ]]; then
+        # Debian/Ubuntu
+        if check_root; then
+            print_status "info" "使用apt卸载..."
+            apt remove --purge -y certbot python3-certbot-nginx python3-certbot-apache 2>/dev/null || true
+            apt autoremove -y 2>/dev/null || true
+            uninstall_success=true
+        else
+            print_status "error" "需要root权限进行卸载"
+            print_status "info" "请运行: sudo $0 uninstall"
+            read -p "按回车键返回..."
+            return 2
+        fi
+    elif [[ -f /etc/redhat-release ]]; then
+        # CentOS/RHEL
+        if check_root; then
+            print_status "info" "使用yum卸载..."
+            yum remove -y certbot python3-certbot-nginx python3-certbot-apache 2>/dev/null || true
+            uninstall_success=true
+        else
+            print_status "error" "需要root权限进行卸载"
+            print_status "info" "请运行: sudo $0 uninstall"
+            read -p "按回车键返回..."
+            return 2
+        fi
+    elif command -v brew &> /dev/null; then
+        # macOS
+        print_status "info" "使用brew卸载..."
+        brew uninstall certbot 2>/dev/null || true
+        uninstall_success=true
+    else
+        print_status "warning" "无法确定安装方式，尝试手动清理..."
+        uninstall_success=true
+    fi
+
+    # 删除证书文件
+    if $delete_certs && check_root; then
+        print_status "info" "删除SSL证书文件..."
+        rm -rf /etc/letsencrypt 2>/dev/null || true
+    fi
+
+    # 移除自动续期配置
+    if check_root; then
+        print_status "info" "移除自动续期配置..."
+        # 移除systemd timer
+        systemctl stop certbot.timer 2>/dev/null || true
+        systemctl disable certbot.timer 2>/dev/null || true
+        rm -f /etc/systemd/system/certbot.service /etc/systemd/system/certbot.timer 2>/dev/null || true
+        systemctl daemon-reload 2>/dev/null || true
+
+        # 移除cron任务
+        (crontab -l 2>/dev/null | grep -v "certbot renew") | crontab - 2>/dev/null || true
+    fi
+
+    # 验证卸载结果
+    if ! command -v certbot &> /dev/null; then
+        print_status "success" "Certbot卸载成功！"
+        if $delete_certs; then
+            print_status "info" "SSL证书已删除"
+        else
+            print_status "info" "SSL证书文件保留在 /etc/letsencrypt/"
+        fi
+    else
+        print_status "error" "Certbot卸载失败，请手动清理"
+        return 1
+    fi
+}
+
+# 重新安装certbot
+reinstall_certbot() {
+    print_status "title" "重新安装Certbot"
+    echo "=================================================="
+
+    print_status "info" "重新安装将会："
+    print_status "info" "  • 完全卸载当前的Certbot"
+    print_status "info" "  • 重新安装最新版本的Certbot"
+    print_status "warning" "⚠️  这可能会影响现有的SSL证书"
+    echo ""
+
+    if ! confirm_action "确认要重新安装Certbot吗？"; then
+        case $? in
+            1) print_status "info" "操作已取消"; return 2 ;;
+            2) print_status "warning" "操作已取消"; return 2 ;;
+        esac
+    fi
+
+    # 先卸载
+    if command -v certbot &> /dev/null; then
+        print_status "info" "正在卸载现有Certbot..."
+        uninstall_certbot
+        local uninstall_result=$?
+        if [[ $uninstall_result -eq 1 ]]; then
+            print_status "error" "卸载失败，重新安装终止"
+            return 1
+        fi
+    fi
+
+    # 重新安装
+    print_status "info" "正在重新安装Certbot..."
+    install_certbot
+    local install_result=$?
+
+    if [[ $install_result -eq 0 ]]; then
+        print_status "success" "Certbot重新安装成功！"
+        print_status "info" "现在可以重新配置SSL证书了"
+    else
+        print_status "error" "重新安装失败"
+        return 1
+    fi
+}
+
+# Certbot管理子菜单
+certbot_management() {
+    while true; do
+        clear
+        echo "🔧 Certbot SSL证书管理工具 - Certbot管理"
+        echo "=================================================="
+        echo ""
+        echo "请选择操作:"
+        echo "1) 安装Certbot"
+        echo "2) 卸载Certbot"
+        echo "3) 重新安装Certbot"
+        echo "4) 返回主菜单"
+        echo ""
+        echo "💡 提示: 在任何输入步骤中都可以输入 'back' 返回或 'cancel' 取消"
+        echo ""
+        read -p "请输入选项 (1-4): " choice
+
+        case $choice in
+            1)
+                install_certbot
+                local install_result=$?
+                if [[ $install_result -eq 2 ]]; then
+                    continue
+                fi
+                read -p "按回车键继续..."
+                ;;
+            2)
+                uninstall_certbot
+                local uninstall_result=$?
+                if [[ $uninstall_result -eq 2 ]]; then
+                    continue
+                fi
+                read -p "按回车键继续..."
+                ;;
+            3)
+                reinstall_certbot
+                local reinstall_result=$?
+                if [[ $reinstall_result -eq 2 ]]; then
+                    continue
+                fi
+                read -p "按回车键继续..."
+                ;;
+            4)
+                return 0
+                ;;
+            "q"|"Q"|"back"|"返回")
+                print_status "info" "返回主菜单"
+                return 0
+                ;;
+            *)
+                print_status "error" "无效选项，请重新选择"
+                sleep 2
+                ;;
+        esac
+    done
+}
+
 # 手动续期证书
 renew_certificates() {
     print_status "title" "续期证书"
@@ -588,7 +814,7 @@ interactive_menu() {
         echo "请选择操作:"
         echo "1) 显示系统状态"
         echo "2) 列出已安装证书"
-        echo "3) 安装certbot"
+        echo "3) Certbot管理"
         echo "4) 创建SSL证书"
         echo "5) 续期证书"
         echo "6) 设置自动续期"
@@ -610,13 +836,7 @@ interactive_menu() {
                 read -p "按回车键继续..."
                 ;;
             3)
-                install_certbot
-                local install_result=$?
-                if [[ $install_result -eq 2 ]]; then
-                    # 用户取消或返回，直接返回菜单
-                    continue
-                fi
-                read -p "按回车键继续..."
+                certbot_management
                 ;;
             4)
                 create_certificate ""
@@ -672,6 +892,12 @@ main() {
             ;;
         "install")
             install_certbot
+            ;;
+        "uninstall")
+            uninstall_certbot
+            ;;
+        "reinstall")
+            reinstall_certbot
             ;;
         "create")
             create_certificate "$2"
