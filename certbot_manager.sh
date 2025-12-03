@@ -433,20 +433,34 @@ create_certificate() {
     # 如果没有提供域名，则交互式获取
     if [[ -z "$domain" ]]; then
         if ! domain=$(get_user_input "请输入域名: " false "domain"); then
-            case $? in
+            local result=$?
+            case $result in
                 1) print_status "info" "返回上级菜单"; return 2 ;;
                 2) print_status "warning" "操作已取消"; return 2 ;;
             esac
+        fi
+
+        # 确保domain变量被正确设置
+        if [[ -z "$domain" ]]; then
+            print_status "error" "域名输入失败，请重试"
+            return 2
         fi
     fi
 
     # 获取邮箱地址
     print_status "info" "请输入用于Let's Encrypt的邮箱地址"
     if ! email=$(get_user_input "邮箱地址: " false "email"); then
-        case $? in
+        local result=$?
+        case $result in
             1) print_status "info" "返回上级菜单"; return 2 ;;
             2) print_status "warning" "操作已取消"; return 2 ;;
         esac
+    fi
+
+    # 确保email变量被正确设置
+    if [[ -z "$email" ]]; then
+        print_status "error" "邮箱地址输入失败，请重试"
+        return 2
     fi
 
     # 检查nginx是否安装
