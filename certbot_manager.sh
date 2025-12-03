@@ -35,24 +35,32 @@ show_help() {
     echo ""
     echo "命令:"
     echo "  status           显示系统状态"
-    echo "  list             列出已安装证书"
+    echo ""
+    echo "Certbot管理:"
     echo "  install          安装certbot"
     echo "  uninstall        卸载certbot"
     echo "  reinstall         重新安装certbot"
+    echo ""
+    echo "SSL证书管理:"
+    echo "  list             列出已安装证书"
     echo "  create <domain>  为域名创建SSL证书"
     echo "  cert-uninstall <domain>  卸载SSL证书"
     echo "  cert-reinstall <domain> 重新安装SSL证书"
     echo "  renew            手动续期证书"
     echo "  renew-setup      设置自动续期"
     echo "  nginx-check      检查nginx配置"
-    echo "  interactive      交互式菜单"
+    echo ""
+    echo "其他:"
+    echo "  interactive      交互式菜单（推荐）"
     echo "  version          显示版本信息"
     echo "  help             显示帮助信息"
     echo ""
     echo "示例:"
+    echo "  $0 interactive                # 启动交互式菜单（推荐）"
     echo "  $0 status                     # 检查系统状态"
     echo "  $0 create example.com         # 创建证书"
-    echo "  $0 interactive                # 启动交互式菜单"
+    echo "  $0 cert-uninstall example.com # 卸载证书"
+    echo "  $0 renew-setup                # 设置自动续期"
     echo ""
 }
 
@@ -964,17 +972,25 @@ certificate_management() {
         echo "=================================================="
         echo ""
         echo "请选择操作:"
-        echo "1) 安装SSL证书"
-        echo "2) 卸载SSL证书"
-        echo "3) 重新安装SSL证书"
-        echo "4) 返回主菜单"
+        echo "1) 列出已安装证书"
+        echo "2) 安装SSL证书"
+        echo "3) 卸载SSL证书"
+        echo "4) 重新安装SSL证书"
+        echo "5) 续期证书"
+        echo "6) 设置自动续期"
+        echo "7) 检查nginx配置"
+        echo "8) 返回主菜单"
         echo ""
         echo "💡 提示: 在任何输入步骤中都可以输入 'back' 返回或 'cancel' 取消"
         echo ""
-        read -p "请输入选项 (1-4): " choice
+        read -p "请输入选项 (1-8): " choice
 
         case $choice in
             1)
+                list_certificates
+                read -p "按回车键继续..."
+                ;;
+            2)
                 create_certificate ""
                 local install_result=$?
                 if [[ $install_result -eq 2 ]]; then
@@ -982,7 +998,7 @@ certificate_management() {
                 fi
                 read -p "按回车键继续..."
                 ;;
-            2)
+            3)
                 uninstall_certificate ""
                 local uninstall_result=$?
                 if [[ $uninstall_result -eq 2 ]]; then
@@ -990,7 +1006,7 @@ certificate_management() {
                 fi
                 read -p "按回车键继续..."
                 ;;
-            3)
+            4)
                 reinstall_certificate ""
                 local reinstall_result=$?
                 if [[ $reinstall_result -eq 2 ]]; then
@@ -998,7 +1014,19 @@ certificate_management() {
                 fi
                 read -p "按回车键继续..."
                 ;;
-            4)
+            5)
+                renew_certificates
+                read -p "按回车键继续..."
+                ;;
+            6)
+                setup_auto_renew
+                read -p "按回车键继续..."
+                ;;
+            7)
+                check_nginx
+                read -p "按回车键继续..."
+                ;;
+            8)
                 return 0
                 ;;
             "q"|"Q"|"back"|"返回")
@@ -1139,19 +1167,15 @@ interactive_menu() {
         echo ""
         echo "请选择操作:"
         echo "1) 显示系统状态"
-        echo "2) 列出已安装证书"
-        echo "3) Certbot管理"
-        echo "4) 证书管理"
-        echo "5) 创建SSL证书"
-        echo "6) 续期证书"
-        echo "7) 设置自动续期"
-        echo "8) 检查nginx配置"
-        echo "9) 帮助信息"
-        echo "10) 退出"
+        echo "2) Certbot管理"
+        echo "3) 证书管理"
+        echo "4) 创建SSL证书"
+        echo "5) 帮助信息"
+        echo "6) 退出"
         echo ""
         echo "💡 提示: 在任何输入步骤中都可以输入 'back' 返回或 'cancel' 取消"
         echo ""
-        read -p "请输入选项 (1-10): " choice
+        read -p "请输入选项 (1-6): " choice
 
         case $choice in
             1)
@@ -1159,16 +1183,12 @@ interactive_menu() {
                 read -p "按回车键继续..."
                 ;;
             2)
-                list_certificates
-                read -p "按回车键继续..."
-                ;;
-            3)
                 certbot_management
                 ;;
-            4)
+            3)
                 certificate_management
                 ;;
-            5)
+            4)
                 create_certificate ""
                 local cert_result=$?
                 if [[ $cert_result -eq 2 ]]; then
@@ -1177,23 +1197,11 @@ interactive_menu() {
                 fi
                 read -p "按回车键继续..."
                 ;;
-            6)
-                renew_certificates
-                read -p "按回车键继续..."
-                ;;
-            7)
-                setup_auto_renew
-                read -p "按回车键继续..."
-                ;;
-            8)
-                check_nginx
-                read -p "按回车键继续..."
-                ;;
-            9)
+            5)
                 show_help
                 read -p "按回车键继续..."
                 ;;
-            10)
+            6)
                 if confirm_action "确定要退出程序吗？"; then
                     print_status "info" "退出程序"
                     exit 0
