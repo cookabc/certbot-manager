@@ -58,9 +58,14 @@ show_help() {
     echo "示例:"
     echo "  $0 interactive                # 启动交互式菜单（推荐）"
     echo "  $0 status                     # 检查系统状态"
-    echo "  $0 create example.com         # 创建证书"
-    echo "  $0 cert-uninstall example.com # 卸载证书"
+    echo "  $0 create example.com         # 快速创建SSL证书"
+    echo "  $0 cert-uninstall example.com # 卸载SSL证书"
     echo "  $0 renew-setup                # 设置自动续期"
+    echo ""
+    echo "💡 使用建议:"
+    echo "  • 交互式菜单提供完整功能管理"
+    echo "  • create命令适合快速创建证书"
+    echo "  • 证书管理选项包含所有证书操作"
     echo ""
 }
 
@@ -1169,13 +1174,12 @@ interactive_menu() {
         echo "1) 显示系统状态"
         echo "2) Certbot管理"
         echo "3) 证书管理"
-        echo "4) 创建SSL证书"
-        echo "5) 帮助信息"
-        echo "6) 退出"
+        echo "4) 帮助信息"
+        echo "5) 退出"
         echo ""
         echo "💡 提示: 在任何输入步骤中都可以输入 'back' 返回或 'cancel' 取消"
         echo ""
-        read -p "请输入选项 (1-6): " choice
+        read -p "请输入选项 (1-5): " choice
 
         case $choice in
             1)
@@ -1189,19 +1193,10 @@ interactive_menu() {
                 certificate_management
                 ;;
             4)
-                create_certificate ""
-                local cert_result=$?
-                if [[ $cert_result -eq 2 ]]; then
-                    # 用户取消或返回，直接返回菜单
-                    continue
-                fi
-                read -p "按回车键继续..."
-                ;;
-            5)
                 show_help
                 read -p "按回车键继续..."
                 ;;
-            6)
+            5)
                 if confirm_action "确定要退出程序吗？"; then
                     print_status "info" "退出程序"
                     exit 0
