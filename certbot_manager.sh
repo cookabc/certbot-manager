@@ -228,7 +228,7 @@ convert_to_punycode() {
         print_status "info" "原域名: $domain"
 
         if command -v idn2 &> /dev/null; then
-            if domain=$(idn2 -a "$domain" 2>/dev/null); then
+            if domain=$(idn2 -l "$domain" 2>/dev/null); then
                 if [[ -n "$domain" ]]; then
                     print_status "success" "Punycode转换成功: $domain"
                 else
