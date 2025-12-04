@@ -3,14 +3,14 @@
 # ==============================================================================
 # Certbot Manager - SSL证书管理工具
 # ==============================================================================
-# 版本: 1.0.0
+# 版本: 1.1.2
 # 作者: cookabc
 # 仓库: https://github.com/cookabc/certbot-manager
 # 描述: 纯Shell脚本工具，用于管理Let's Encrypt SSL证书
 # 许可: MIT License
 # ==============================================================================
 
-set -e
+set -euo pipefail
 
 # 颜色定义
 RED='\033[0;31m'
@@ -18,7 +18,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
-CYAN='\033[0;36m'
+ 
 NC='\033[0m' # No Color
 
 # 版本信息
@@ -120,10 +120,8 @@ get_user_input() {
     while true; do
         # 确保提示文本和输入完全分离
         echo -n "$prompt"
-        stty -echo 2>/dev/null || true  # 尝试禁用回显，失败也没关系
         read -r user_input
-        stty echo 2>/dev/null || true   # 重新启用回显
-        echo  # 输出换行符
+        echo
 
         # 检查返回操作
         if [[ "$user_input" == "back" || "$user_input" == "返回" || "$user_input" == "b" || "$user_input" == "B" ]]; then
@@ -204,18 +202,39 @@ convert_to_punycode() {
         print_status "warning" "检测到国际化域名（包含非ASCII字符）"
         print_status "info" "原域名: $domain"
 
-        if command -v idn &> /dev/null; then
-            domain=$(idn --quiet "$domain" 2>/dev/null)
-            if [[ $? -eq 0 ]] && [[ -n "$domain" ]]; then
-                print_status "success" "Punycode转换成功: $domain"
+        if command -v idn2 &> /dev/null; then
+            if domain=$(idn2 -a "$domain" 2>/dev/null); then
+                if [[ -n "$domain" ]]; then
+                    print_status "success" "Punycode转换成功: $domain"
+                else
+                    print_status "error" "Punycode转换失败"
+                    return 1
+                fi
+            else
+                print_status "error" "Punycode转换失败"
+                return 1
+            fi
+        elif command -v idn &> /dev/null; then
+            if domain=$(idn --quiet "$domain" 2>/dev/null); then
+                if [[ -n "$domain" ]]; then
+                    print_status "success" "Punycode转换成功: $domain"
+                else
+                    print_status "error" "Punycode转换失败"
+                    return 1
+                fi
             else
                 print_status "error" "Punycode转换失败"
                 return 1
             fi
         else
-            print_status "error" "系统缺少idn工具，无法进行Punycode转换"
-            print_status "info" "请安装idn工具: sudo apt install idn (Ubuntu/Debian)"
-            print_status "info" "或使用在线转换工具手动转换域名"
+            print_status "error" "系统缺少idn/idn2工具，无法进行Punycode转换"
+            if command -v apt &> /dev/null; then
+                print_status "info" "请安装: sudo apt install idn2 或 idn"
+            elif command -v brew &> /dev/null; then
+                print_status "info" "请安装: brew install libidn2"
+            else
+                print_status "info" "请使用在线转换工具手动转换域名"
+            fi
             return 1
         fi
     fi
@@ -226,7 +245,6 @@ convert_to_punycode() {
 # 确认操作函数
 confirm_action() {
     local message=$1
-    local default=${2:-"n"}  # 默认值
 
     while true; do
         echo -n "$message (y/n/取消): "
@@ -291,17 +309,25 @@ show_system_status() {
     # 检查证书数量
     if command -v certbot &> /dev/null; then
         if check_root; then
-            cert_count=$(sudo certbot certificates 2>/dev/null | grep "Certificate Name:" | wc -l | tr -d ' ')
+            cert_count=$(certbot certificates 2>/dev/null | grep -c "Certificate Name:")
             print_status "info" "已安装证书数量: $cert_count"
-
-            # 检查自动续期
             if check_auto_renew; then
                 print_status "success" "自动续期: 已设置"
             else
                 print_status "warning" "自动续期: 未设置"
             fi
         else
-            print_status "warning" "需要sudo权限查看证书信息"
+            if command -v sudo &> /dev/null; then
+                cert_count=$(sudo certbot certificates 2>/dev/null | grep -c "Certificate Name:")
+                print_status "info" "已安装证书数量: $cert_count"
+                if check_auto_renew; then
+                    print_status "success" "自动续期: 已设置"
+                else
+                    print_status "warning" "自动续期: 未设置"
+                fi
+            else
+                print_status "warning" "需要sudo权限查看证书信息"
+            fi
         fi
     fi
 
@@ -337,13 +363,16 @@ list_certificates() {
         return 1
     fi
 
-    if ! check_root; then
+    local cert_output
+    if check_root; then
+        cert_output=$(certbot certificates 2>/dev/null)
+    elif command -v sudo &> /dev/null; then
+        cert_output=$(sudo certbot certificates 2>/dev/null)
+    else
         print_status "warning" "需要sudo权限查看证书列表"
         print_status "info" "请运行: sudo $0 list"
         return 1
     fi
-
-    local cert_output=$(sudo certbot certificates 2>/dev/null)
     if [[ -z "$cert_output" || "$cert_output" == *"No certificates found"* ]]; then
         print_status "info" "暂无已安装的证书"
         return 0
@@ -355,13 +384,13 @@ list_certificates() {
             echo ""
             print_status "info" "📋 证书域名: $domain"
         elif [[ "$line" == *"Expiry Date:"* ]]; then
-            expiry=$(echo "$line" | sed 's/.*Expiry Date: //')
+            expiry=${line#*Expiry Date: }
             echo "   到期时间: $expiry"
         elif [[ "$line" == *"Certificate Path:"* ]]; then
-            cert_path=$(echo "$line" | sed 's/.*Certificate Path: //')
+            cert_path=${line#*Certificate Path: }
             echo "   证书路径: $cert_path"
         elif [[ "$line" == *"Private Key Path:"* ]]; then
-            key_path=$(echo "$line" | sed 's/.*Private Key Path: //')
+            key_path=${line#*Private Key Path: }
             echo "   私钥路径: $key_path"
         fi
     done
@@ -384,13 +413,16 @@ install_certbot() {
     local install_method=""
 
     if [[ -f /etc/debian_version ]]; then
-        # Debian/Ubuntu
         print_status "info" "检测到Debian/Ubuntu系统"
-        install_method="apt"
+        if command -v snap &> /dev/null; then
+            install_method="snap"
+        else
+            install_method="apt"
+        fi
         if ! check_root; then
             print_status "warning" "需要root权限安装"
             print_status "info" "请运行: sudo $0 install"
-            read -p "按回车键返回..."
+            read -r -p "按回车键返回..."
             return 2
         fi
     elif [[ -f /etc/redhat-release ]]; then
@@ -400,7 +432,7 @@ install_certbot() {
         if ! check_root; then
             print_status "warning" "需要root权限安装"
             print_status "info" "请运行: sudo $0 install"
-            read -p "按回车键返回..."
+            read -r -p "按回车键返回..."
             return 2
         fi
     elif command -v brew &> /dev/null; then
@@ -410,7 +442,7 @@ install_certbot() {
     else
         print_status "error" "不支持的操作系统"
         print_status "info" "请手动安装certbot: https://certbot.eff.org/"
-        read -p "按回车键返回..."
+        read -r -p "按回车键返回..."
         return 2
     fi
 
@@ -421,11 +453,14 @@ install_certbot() {
     print_status "info" "  系统类型: $([ "$install_method" = "apt" ] && echo "Debian/Ubuntu" || [ "$install_method" = "yum" ] && echo "CentOS/RHEL" || echo "macOS")"
     echo ""
 
-    if ! confirm_action "确认要安装Certbot吗？"; then
-        case $? in
-            1) print_status "info" "操作已取消"; return 2 ;;
-            2) print_status "warning" "操作已取消"; return 2 ;;
+    confirm_action "确认要安装Certbot吗？"
+    rc=$?
+    if [[ $rc -ne 0 ]]; then
+        case "$rc" in
+            1) print_status "info" "操作已取消" ;;
+            2) print_status "warning" "操作已取消" ;;
         esac
+        return 2
     fi
 
     print_status "info" "开始安装Certbot..."
@@ -439,6 +474,9 @@ install_certbot() {
             ;;
         "brew")
             brew install certbot
+            ;;
+        "snap")
+            snap install certbot --classic
             ;;
     esac
 
@@ -465,7 +503,7 @@ create_certificate() {
 
     if ! command -v certbot &> /dev/null; then
         print_status "error" "Certbot未安装，请先运行: $0 install"
-        read -p "按回车键返回..."
+        read -r -p "按回车键返回..."
         return 2
     fi
 
@@ -511,8 +549,12 @@ create_certificate() {
     # 检查nginx是否安装
     nginx_available=false
     if command -v nginx &> /dev/null; then
-        nginx_available=true
-        print_status "info" "检测到Nginx，将使用nginx插件自动配置SSL"
+        if certbot plugins 2>/dev/null | grep -q "nginx"; then
+            nginx_available=true
+            print_status "info" "检测到Nginx和插件，将使用nginx插件"
+        else
+            print_status "info" "检测到Nginx但未安装插件，使用standalone模式"
+        fi
     else
         print_status "info" "未检测到Nginx，将使用standalone模式（需要停止Web服务器）"
     fi
@@ -529,23 +571,40 @@ create_certificate() {
     echo "=================================================="
     echo ""
 
-    if ! confirm_action "确认要创建SSL证书吗？"; then
-        case $? in
-            1) print_status "info" "操作已取消"; return 2 ;;
-            2) print_status "warning" "操作已取消"; return 2 ;;
+    confirm_action "确认要创建SSL证书吗？"
+    rc=$?
+    if [[ $rc -ne 0 ]]; then
+        case "$rc" in
+            1) print_status "info" "操作已取消" ;;
+            2) print_status "warning" "操作已取消" ;;
         esac
+        return 2
     fi
 
     print_status "info" "开始为域名 $domain 创建SSL证书..."
 
-    local cert_cmd=""
+    local success=false
     if $nginx_available; then
-        cert_cmd="sudo certbot --nginx --non-interactive --agree-tos --email $email -d $domain"
+        if check_root; then
+            if certbot --nginx --non-interactive --agree-tos --email "$email" -d "$domain"; then success=true; fi
+        elif command -v sudo &> /dev/null; then
+            if sudo certbot --nginx --non-interactive --agree-tos --email "$email" -d "$domain"; then success=true; fi
+        else
+            print_status "error" "需要sudo权限以配置证书"
+            return 1
+        fi
     else
-        cert_cmd="sudo certbot certonly --standalone --non-interactive --agree-tos --email $email -d $domain"
+        if check_root; then
+            if certbot certonly --standalone --non-interactive --agree-tos --email "$email" -d "$domain"; then success=true; fi
+        elif command -v sudo &> /dev/null; then
+            if sudo certbot certonly --standalone --non-interactive --agree-tos --email "$email" -d "$domain"; then success=true; fi
+        else
+            print_status "error" "需要sudo权限以配置证书"
+            return 1
+        fi
     fi
 
-    if eval "$cert_cmd"; then
+    if $success; then
         print_status "success" "SSL证书创建成功！"
         print_status "info" "证书文件位置: /etc/letsencrypt/live/$domain/"
         print_status "info" "请确保Nginx配置正确指向证书文件"
@@ -566,12 +625,13 @@ uninstall_certbot() {
 
     if ! command -v certbot &> /dev/null; then
         print_status "info" "Certbot未安装，无需卸载"
-        read -p "按回车键返回..."
+        read -r -p "按回车键返回..."
         return 2
     fi
 
     # 获取certbot版本信息
-    local certbot_version=$(certbot --version 2>/dev/null || echo "未知版本")
+    local certbot_version
+    certbot_version=$(certbot --version 2>/dev/null || echo "未知版本")
     print_status "info" "当前Certbot版本: $certbot_version"
 
     # 警告用户
@@ -603,16 +663,19 @@ uninstall_certbot() {
     print_status "info" "  • 移除自动续期配置"
     echo ""
 
-    if ! confirm_action "确认要卸载Certbot吗？此操作不可逆！"; then
-        case $? in
-            1) print_status "info" "操作已取消"; return 2 ;;
-            2) print_status "warning" "操作已取消"; return 2 ;;
+    confirm_action "确认要卸载Certbot吗？此操作不可逆！"
+    rc=$?
+    if [[ $rc -ne 0 ]]; then
+        case "$rc" in
+            1) print_status "info" "操作已取消" ;;
+            2) print_status "warning" "操作已取消" ;;
         esac
+        return 2
     fi
 
     print_status "info" "开始卸载Certbot..."
 
-    local uninstall_success=false
+    :
 
     # 根据安装方式选择卸载方法
     if [[ -f /etc/debian_version ]]; then
@@ -621,11 +684,11 @@ uninstall_certbot() {
             print_status "info" "使用apt卸载..."
             apt remove --purge -y certbot python3-certbot-nginx python3-certbot-apache 2>/dev/null || true
             apt autoremove -y 2>/dev/null || true
-            uninstall_success=true
+            :
         else
             print_status "error" "需要root权限进行卸载"
             print_status "info" "请运行: sudo $0 uninstall"
-            read -p "按回车键返回..."
+            read -r -p "按回车键返回..."
             return 2
         fi
     elif [[ -f /etc/redhat-release ]]; then
@@ -633,21 +696,21 @@ uninstall_certbot() {
         if check_root; then
             print_status "info" "使用yum卸载..."
             yum remove -y certbot python3-certbot-nginx python3-certbot-apache 2>/dev/null || true
-            uninstall_success=true
+            :
         else
             print_status "error" "需要root权限进行卸载"
             print_status "info" "请运行: sudo $0 uninstall"
-            read -p "按回车键返回..."
+            read -r -p "按回车键返回..."
             return 2
         fi
     elif command -v brew &> /dev/null; then
         # macOS
         print_status "info" "使用brew卸载..."
         brew uninstall certbot 2>/dev/null || true
-        uninstall_success=true
+        :
     else
         print_status "warning" "无法确定安装方式，尝试手动清理..."
-        uninstall_success=true
+        :
     fi
 
     # 删除证书文件
@@ -694,11 +757,14 @@ reinstall_certbot() {
     print_status "warning" "⚠️  这可能会影响现有的SSL证书"
     echo ""
 
-    if ! confirm_action "确认要重新安装Certbot吗？"; then
-        case $? in
-            1) print_status "info" "操作已取消"; return 2 ;;
-            2) print_status "warning" "操作已取消"; return 2 ;;
+    confirm_action "确认要重新安装Certbot吗？"
+    rc=$?
+    if [[ $rc -ne 0 ]]; then
+        case "$rc" in
+            1) print_status "info" "操作已取消" ;;
+            2) print_status "warning" "操作已取消" ;;
         esac
+        return 2
     fi
 
     # 先卸载
@@ -706,7 +772,7 @@ reinstall_certbot() {
         print_status "info" "正在卸载现有Certbot..."
         uninstall_certbot
         local uninstall_result=$?
-        if [[ $uninstall_result -eq 1 ]]; then
+        if [[ $uninstall_result -ne 0 ]]; then
             print_status "error" "卸载失败，重新安装终止"
             return 1
         fi
@@ -741,7 +807,7 @@ certbot_management() {
         echo ""
         echo "💡 提示: 在任何输入步骤中都可以输入 'back' 返回或 'cancel' 取消"
         echo ""
-        read -p "请输入选项 (1-4): " choice
+        read -r -p "请输入选项 (1-4): " choice
 
         case $choice in
             1)
@@ -750,7 +816,7 @@ certbot_management() {
                 if [[ $install_result -eq 2 ]]; then
                     continue
                 fi
-                read -p "按回车键继续..."
+                read -r -p "按回车键继续..."
                 ;;
             2)
                 uninstall_certbot
@@ -758,7 +824,7 @@ certbot_management() {
                 if [[ $uninstall_result -eq 2 ]]; then
                     continue
                 fi
-                read -p "按回车键继续..."
+                read -r -p "按回车键继续..."
                 ;;
             3)
                 reinstall_certbot
@@ -766,7 +832,7 @@ certbot_management() {
                 if [[ $reinstall_result -eq 2 ]]; then
                     continue
                 fi
-                read -p "按回车键继续..."
+                read -r -p "按回车键继续..."
                 ;;
             4)
                 return 0
@@ -792,13 +858,16 @@ list_certificates_for_selection() {
         return 1
     fi
 
-    if ! check_root; then
+    local cert_output
+    if check_root; then
+        cert_output=$(certbot certificates 2>/dev/null)
+    elif command -v sudo &> /dev/null; then
+        cert_output=$(sudo certbot certificates 2>/dev/null)
+    else
         print_status "warning" "需要sudo权限查看证书列表"
         print_status "info" "请运行: sudo $0 cert-uninstall"
         return 1
     fi
-
-    local cert_output=$(sudo certbot certificates 2>/dev/null)
     if [[ -z "$cert_output" || "$cert_output" == *"No certificates found"* ]]; then
         print_status "info" "暂无已安装的证书"
         return 1
@@ -844,7 +913,7 @@ uninstall_certificate() {
         readarray -t domains < <(list_certificates_for_selection)
 
         if [[ ${#domains[@]} -eq 0 ]]; then
-            read -p "按回车键返回..."
+            read -r -p "按回车键返回..."
             return 2
         fi
 
@@ -863,7 +932,7 @@ uninstall_certificate() {
                 target_domain="${domains[$index]}"
             else
                 print_status "error" "无效的编号"
-                read -p "按回车键返回..."
+                read -r -p "按回车键返回..."
                 return 2
             fi
         fi
@@ -879,7 +948,7 @@ uninstall_certificate() {
 
         if ! $found; then
             print_status "error" "域名 $target_domain 没有对应的SSL证书"
-            read -p "按回车键返回..."
+            read -r -p "按回车键返回..."
             return 2
         fi
     fi
@@ -902,11 +971,14 @@ uninstall_certificate() {
     echo ""
 
     # 确认操作
-    if ! confirm_action "确认要卸载域名 $target_domain 的SSL证书吗？"; then
-        case $? in
-            1) print_status "info" "操作已取消"; return 2 ;;
-            2) print_status "warning" "操作已取消"; return 2 ;;
+    confirm_action "确认要卸载域名 $target_domain 的SSL证书吗？"
+    rc=$?
+    if [[ $rc -ne 0 ]]; then
+        case "$rc" in
+            1) print_status "info" "操作已取消" ;;
+            2) print_status "warning" "操作已取消" ;;
         esac
+        return 2
     fi
 
     print_status "info" "开始卸载SSL证书..."
@@ -914,13 +986,13 @@ uninstall_certificate() {
     if ! check_root; then
         print_status "error" "需要root权限进行卸载"
         print_status "info" "请运行: sudo $0 cert-uninstall $target_domain"
-        read -p "按回车键返回..."
+        read -r -p "按回车键返回..."
         return 2
     fi
 
     # 删除证书文件
     print_status "info" "删除证书文件..."
-    if sudo certbot delete --cert-name "$target_domain" 2>/dev/null; then
+    if certbot delete --cert-name "$target_domain" 2>/dev/null; then
         print_status "success" "SSL证书卸载成功！"
         print_status "info" "证书文件已从系统中删除"
         print_status "warning" "请记得手动更新Nginx配置文件，移除SSL相关配置"
@@ -933,9 +1005,9 @@ uninstall_certificate() {
         local archive_dir="/etc/letsencrypt/archive/$target_domain"
         local renewal_file="/etc/letsencrypt/renewal/$target_domain.conf"
 
-        sudo rm -rf "$cert_dir" 2>/dev/null || true
-        sudo rm -rf "$archive_dir" 2>/dev/null || true
-        sudo rm -f "$renewal_file" 2>/dev/null || true
+        rm -rf "$cert_dir" 2>/dev/null || true
+        rm -rf "$archive_dir" 2>/dev/null || true
+        rm -f "$renewal_file" 2>/dev/null || true
 
         print_status "success" "SSL证书手动删除完成"
         print_status "warning" "请记得手动更新Nginx配置"
@@ -970,7 +1042,7 @@ reinstall_certificate() {
         if [[ ${#domains[@]} -eq 0 ]]; then
             print_status "info" "没有找到可以重新安装的证书"
             print_status "info" "您可以创建新的SSL证书"
-            read -p "按回车键返回..."
+            read -r -p "按回车键返回..."
             return 2
         fi
 
@@ -989,7 +1061,7 @@ reinstall_certificate() {
                 target_domain="${domains[$index]}"
             else
                 print_status "error" "无效的编号"
-                read -p "按回车键返回..."
+                read -r -p "按回车键返回..."
                 return 2
             fi
         fi
@@ -1005,7 +1077,7 @@ reinstall_certificate() {
 
         if ! $found; then
             print_status "error" "域名 $target_domain 没有对应的SSL证书"
-            read -p "按回车键返回..."
+            read -r -p "按回车键返回..."
             return 2
         fi
     fi
@@ -1017,11 +1089,14 @@ reinstall_certificate() {
     echo ""
 
     # 确认操作
-    if ! confirm_action "确认要重新安装域名 $target_domain 的SSL证书吗？"; then
-        case $? in
-            1) print_status "info" "操作已取消"; return 2 ;;
-            2) print_status "warning" "操作已取消"; return 2 ;;
+    confirm_action "确认要重新安装域名 $target_domain 的SSL证书吗？"
+    rc=$?
+    if [[ $rc -ne 0 ]]; then
+        case "$rc" in
+            1) print_status "info" "操作已取消" ;;
+            2) print_status "warning" "操作已取消" ;;
         esac
+        return 2
     fi
 
     # 先删除现有证书
@@ -1029,7 +1104,7 @@ reinstall_certificate() {
     uninstall_certificate "$target_domain"
     local uninstall_result=$?
 
-    if [[ $uninstall_result -eq 1 ]]; then
+    if [[ $uninstall_result -ne 0 ]]; then
         print_status "error" "删除现有证书失败，重新安装终止"
         return 1
     fi
@@ -1069,12 +1144,12 @@ certificate_management() {
         echo ""
         echo "💡 提示: 在任何输入步骤中都可以输入 'back' 返回或 'cancel' 取消"
         echo ""
-        read -p "请输入选项 (1-8): " choice
+        read -r -p "请输入选项 (1-8): " choice
 
         case $choice in
             1)
                 list_certificates
-                read -p "按回车键继续..."
+                read -r -p "按回车键继续..."
                 ;;
             2)
                 create_certificate ""
@@ -1082,7 +1157,7 @@ certificate_management() {
                 if [[ $install_result -eq 2 ]]; then
                     continue
                 fi
-                read -p "按回车键继续..."
+                read -r -p "按回车键继续..."
                 ;;
             3)
                 uninstall_certificate ""
@@ -1090,7 +1165,7 @@ certificate_management() {
                 if [[ $uninstall_result -eq 2 ]]; then
                     continue
                 fi
-                read -p "按回车键继续..."
+                read -r -p "按回车键继续..."
                 ;;
             4)
                 reinstall_certificate ""
@@ -1098,19 +1173,19 @@ certificate_management() {
                 if [[ $reinstall_result -eq 2 ]]; then
                     continue
                 fi
-                read -p "按回车键继续..."
+                read -r -p "按回车键继续..."
                 ;;
             5)
                 renew_certificates
-                read -p "按回车键继续..."
+                read -r -p "按回车键继续..."
                 ;;
             6)
                 setup_auto_renew
-                read -p "按回车键继续..."
+                read -r -p "按回车键继续..."
                 ;;
             7)
                 check_nginx
-                read -p "按回车键继续..."
+                read -r -p "按回车键继续..."
                 ;;
             8)
                 return 0
@@ -1137,15 +1212,19 @@ renew_certificates() {
         return 1
     fi
 
-    if ! check_root; then
+    print_status "info" "开始续期证书..."
+
+    if check_root; then
+        renew_cmd="certbot renew"
+    elif command -v sudo &> /dev/null; then
+        renew_cmd="sudo certbot renew"
+    else
         print_status "warning" "需要sudo权限续期证书"
         print_status "info" "请运行: sudo $0 renew"
         return 1
     fi
 
-    print_status "info" "开始续期证书..."
-
-    if sudo certbot renew; then
+    if eval "$renew_cmd"; then
         print_status "success" "证书续期成功！"
     else
         print_status "error" "证书续期失败"
@@ -1172,21 +1251,20 @@ setup_auto_renew() {
     if command -v systemctl &> /dev/null && check_root; then
         print_status "info" "尝试使用systemd timer设置自动续期..."
 
-        # 创建systemd timer service
+        CERTBOT_BIN=$(command -v certbot || echo /usr/bin/certbot)
         cat > /etc/systemd/system/certbot.service << EOF
 [Unit]
 Description=Let's Encrypt renewal
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/certbot renew --post-hook "systemctl reload nginx"
+ExecStart=${CERTBOT_BIN} renew --post-hook "systemctl reload nginx"
 EOF
 
-        # 创建systemd timer
         cat > /etc/systemd/system/certbot.timer << EOF
 [Unit]
 Description=Run certbot twice daily
 [Timer]
-OnCalendar=*-*-* 00,12:00:00
+OnCalendar=*-*-* 00:00:00,12:00:00
 RandomizedDelaySec=1h
 Persistent=true
 [Install]
@@ -1206,8 +1284,13 @@ EOF
     if command -v crontab &> /dev/null; then
         print_status "info" "使用cron设置自动续期..."
 
-        local cron_job="0 12 * * * /usr/bin/certbot renew --quiet"
-        (crontab -l 2>/dev/null; echo "$cron_job") | crontab -
+        local cron_job
+        cron_job="0 12 * * * $(command -v certbot || echo /usr/bin/certbot) renew --quiet"
+        if crontab -l 2>/dev/null | grep -q "certbot renew"; then
+            :
+        else
+            (crontab -l 2>/dev/null; echo "$cron_job") | crontab -
+        fi
 
         if crontab -l 2>/dev/null | grep -q "certbot renew"; then
             print_status "success" "自动续期设置成功（cron）"
@@ -1241,7 +1324,7 @@ check_nginx() {
     # 显示nginx版本和配置文件位置
     echo ""
     print_status "info" "Nginx版本: $(nginx -v 2>&1 | cut -d' ' -f3)"
-    print_status "info" "主配置文件: $(nginx -T 2>/dev/null | head -1 | grep -o '#.*' || echo '/etc/nginx/nginx.conf')"
+    print_status "info" "主配置文件: $(nginx -t 2>&1 | grep 'configuration file' | awk '{print $5}' || echo '/etc/nginx/nginx.conf')"
 }
 
 # 交互式菜单
@@ -1260,12 +1343,12 @@ interactive_menu() {
         echo ""
         echo "💡 提示: 在任何输入步骤中都可以输入 'back' 返回或 'cancel' 取消"
         echo ""
-        read -p "请输入选项 (1-5): " choice
+        read -r -p "请输入选项 (1-5): " choice
 
         case $choice in
             1)
                 show_system_status
-                read -p "按回车键继续..."
+                read -r -p "按回车键继续..."
                 ;;
             2)
                 certbot_management
@@ -1275,7 +1358,7 @@ interactive_menu() {
                 ;;
             4)
                 show_help
-                read -p "按回车键继续..."
+                read -r -p "按回车键继续..."
                 ;;
             5)
                 if confirm_action "确定要退出程序吗？"; then
