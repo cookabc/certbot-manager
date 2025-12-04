@@ -8,6 +8,7 @@ ehthumbs.db
 Thumbs.db
 
 # 编辑器和IDE
+.claude/
 .vscode/
 .idea/
 *.swp
