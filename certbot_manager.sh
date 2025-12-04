@@ -851,10 +851,10 @@ certbot_management() {
 
 # 列出所有证书供选择
 list_certificates_for_selection() {
-    print_status "info" "获取已安装的证书列表..."
+    print_status "info" "获取已安装的证书列表..." >&2
 
     if ! command -v certbot &> /dev/null; then
-        print_status "error" "Certbot未安装"
+        print_status "error" "Certbot未安装" >&2
         return 1
     fi
 
@@ -864,16 +864,17 @@ list_certificates_for_selection() {
     elif command -v sudo &> /dev/null; then
         cert_output=$(sudo certbot certificates 2>/dev/null)
     else
-        print_status "warning" "需要sudo权限查看证书列表"
-        print_status "info" "请运行: sudo $0 cert-uninstall"
+        print_status "warning" "需要sudo权限查看证书列表" >&2
+        print_status "info" "请运行: sudo $0 cert-uninstall" >&2
         return 1
     fi
     if [[ -z "$cert_output" || "$cert_output" == *"No certificates found"* ]]; then
-        print_status "info" "暂无已安装的证书"
+        print_status "info" "暂无已安装的证书" >&2
         return 1
     fi
 
     local domains=()
+    local domain
     while IFS= read -r line; do
         if [[ "$line" == *"Certificate Name:"* ]]; then
             domain=$(echo "$line" | awk '{print $3}')
@@ -882,16 +883,11 @@ list_certificates_for_selection() {
     done <<< "$cert_output"
 
     if [[ ${#domains[@]} -eq 0 ]]; then
-        print_status "info" "暂无已安装的证书"
+        print_status "info" "暂无已安装的证书" >&2
         return 1
     fi
 
-    print_status "info" "已安装的证书："
-    for i in "${!domains[@]}"; do
-        echo "  $((i+1))) ${domains[i]}"
-    done
-
-    # 返回域名数组
+    # 仅输出纯域名列表到stdout
     printf '%s\n' "${domains[@]}"
     return 0
 }
@@ -916,6 +912,11 @@ uninstall_certificate() {
             read -r -p "按回车键返回..."
             return 2
         fi
+
+        print_status "info" "已安装的证书："
+        for i in "${!domains[@]}"; do
+            echo "  $((i+1))) ${domains[i]}"
+        done
 
         echo ""
         if ! target_domain=$(get_user_input "请输入要卸载的域名或编号: " false "domain"); then
@@ -1045,6 +1046,11 @@ reinstall_certificate() {
             read -r -p "按回车键返回..."
             return 2
         fi
+
+        print_status "info" "已安装的证书："
+        for i in "${!domains[@]}"; do
+            echo "  $((i+1))) ${domains[i]}"
+        done
 
         echo ""
         if ! target_domain=$(get_user_input "请输入要重新安装的域名或编号: " false "domain"); then
