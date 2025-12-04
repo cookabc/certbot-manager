@@ -22,7 +22,7 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # 版本信息
-VERSION="1.1.1"
+VERSION="1.1.2"
 GITHUB_REPO="https://github.com/cookabc/certbot-manager"
 
 # 显示帮助信息
@@ -118,8 +118,12 @@ get_user_input() {
     local user_input
 
     while true; do
+        # 确保提示文本和输入完全分离
         echo -n "$prompt"
+        stty -echo 2>/dev/null || true  # 尝试禁用回显，失败也没关系
         read -r user_input
+        stty echo 2>/dev/null || true   # 重新启用回显
+        echo  # 输出换行符
 
         # 检查返回操作
         if [[ "$user_input" == "back" || "$user_input" == "返回" || "$user_input" == "b" || "$user_input" == "B" ]]; then
@@ -153,14 +157,6 @@ get_user_input() {
                 fi
                 ;;
             "domain")
-                # 检查是否包含中文或其他非ASCII字符
-                if [[ "$user_input" =~ [^a-zA-Z0-9.\-*] ]]; then
-                    print_status "error" "域名包含不支持的字符或中文，请使用英文域名"
-                    print_status "info" "提示: 国际化域名需要转换为Punycode格式"
-                    print_status "info" "输入 'back' 返回上级菜单，输入 'cancel' 取消操作"
-                    continue
-                fi
-
                 # 检查通配符域名
                 if [[ "$user_input" == "*"* ]]; then
                     print_status "error" "暂不支持通配符域名（*.example.com）"
@@ -169,7 +165,9 @@ get_user_input() {
                     continue
                 fi
 
-                # 改进的域名格式验证 - 使用更宽松和准确的验证
+                # 对域名格式进行更宽松的验证，国际化域名由转换函数处理
+
+                # 宽松的域名格式验证 - 主要检查基本结构
                 # 检查基本格式：不以点开头或结尾，不包含连续的点
                 if [[ "$user_input" =~ ^\. ]] || [[ "$user_input" =~ \.$ ]] || [[ "$user_input" =~ \.\. ]]; then
                     print_status "error" "域名格式不正确：不能以点开头或结尾，不能包含连续的点"
@@ -178,19 +176,17 @@ get_user_input() {
                     continue
                 fi
 
-                # 检查长度和基本字符
-                if [[ ${#user_input} -gt 253 ]] || [[ ${#user_input} -lt 3 ]]; then
-                    print_status "error" "域名长度必须在3-253个字符之间"
+                # 检查长度限制
+                if [[ ${#user_input} -gt 253 ]] || [[ ${#user_input} -lt 1 ]]; then
+                    print_status "error" "域名长度必须在1-253个字符之间"
                     print_status "info" "输入 'back' 返回上级菜单，输入 'cancel' 取消操作"
                     continue
                 fi
 
-                # 简化的域名验证 - 检查是否包含至少一个点和有效字符
-                if [[ ! "$user_input" =~ ^[a-zA-Z0-9]([a-zA-Z0-9.\-]*[a-zA-Z0-9])?$ ]] || [[ ! "$user_input" =~ \. ]]; then
-                    print_status "error" "域名格式不正确，请输入有效的域名格式"
-                    print_status "info" "正确格式示例: example.com, sub.example.org"
-                    print_status "info" "输入 'back' 返回上级菜单，输入 'cancel' 取消操作"
-                    continue
+                # 检查是否包含至少一个点（国际化域名也适用）
+                if [[ ! "$user_input" =~ \. ]]; then
+                    print_status "warning" "建议使用完整域名（如：example.com），但继续处理当前输入"
+                    # 不阻止继续，让用户决定
                 fi
                 ;;
         esac
@@ -198,6 +194,33 @@ get_user_input() {
         echo "$user_input"
         return 0
     done
+}
+
+# Punycode转换函数（简化版本）
+convert_to_punycode() {
+    local domain=$1
+    # 检查是否包含非ASCII字符（包括中文等Unicode字符）
+    if [[ "$domain" =~ [^a-zA-Z0-9.-] ]]; then
+        print_status "warning" "检测到国际化域名（包含非ASCII字符）"
+        print_status "info" "原域名: $domain"
+
+        if command -v idn &> /dev/null; then
+            domain=$(idn --quiet "$domain" 2>/dev/null)
+            if [[ $? -eq 0 ]] && [[ -n "$domain" ]]; then
+                print_status "success" "Punycode转换成功: $domain"
+            else
+                print_status "error" "Punycode转换失败"
+                return 1
+            fi
+        else
+            print_status "error" "系统缺少idn工具，无法进行Punycode转换"
+            print_status "info" "请安装idn工具: sudo apt install idn (Ubuntu/Debian)"
+            print_status "info" "或使用在线转换工具手动转换域名"
+            return 1
+        fi
+    fi
+    echo "$domain"
+    return 0
 }
 
 # 确认操作函数
@@ -463,6 +486,12 @@ create_certificate() {
         fi
     fi
 
+    # 检查并转换Punycode域名
+    if ! domain=$(convert_to_punycode "$domain"); then
+        print_status "error" "域名转换失败"
+        return 2
+    fi
+
     # 获取邮箱地址
     print_status "info" "请输入用于Let's Encrypt的邮箱地址"
     if ! email=$(get_user_input "邮箱地址: " false "email"); then
@@ -490,10 +519,14 @@ create_certificate() {
 
     # 确认操作
     echo ""
-    print_status "info" "即将创建SSL证书："
-    print_status "info" "  域名: $domain"
-    print_status "info" "  邮箱: $email"
-    print_status "info" "  模式: $([ "$nginx_available" = true ] && echo "Nginx插件" || echo "Standalone模式")"
+    # 显示证书信息确认（调试友好格式）
+    echo ""
+    print_status "title" "证书信息确认"
+    echo "=================================================="
+    echo "📍 域名: $domain"
+    echo "📧 邮箱: $email"
+    echo "🔧 模式: $([ "$nginx_available" = true ] && echo "Nginx插件" || echo "Standalone模式")"
+    echo "=================================================="
     echo ""
 
     if ! confirm_action "确认要创建SSL证书吗？"; then
