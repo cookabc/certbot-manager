@@ -909,8 +909,8 @@ uninstall_certificate() {
         readarray -t domains < <(list_certificates_for_selection)
 
         if [[ ${#domains[@]} -eq 0 ]]; then
-            read -r -p "按回车键返回..."
-            return 2
+            read -r -p "按回车键返回主菜单..."
+            return 3
         fi
 
         print_status "info" "已安装的证书："
@@ -1043,8 +1043,8 @@ reinstall_certificate() {
         if [[ ${#domains[@]} -eq 0 ]]; then
             print_status "info" "没有找到可以重新安装的证书"
             print_status "info" "您可以创建新的SSL证书"
-            read -r -p "按回车键返回..."
-            return 2
+            read -r -p "按回车键返回主菜单..."
+            return 3
         fi
 
         print_status "info" "已安装的证书："
@@ -1168,7 +1168,9 @@ certificate_management() {
             3)
                 uninstall_certificate ""
                 local uninstall_result=$?
-                if [[ $uninstall_result -eq 2 ]]; then
+                if [[ $uninstall_result -eq 3 ]]; then
+                    return 0
+                elif [[ $uninstall_result -eq 2 ]]; then
                     continue
                 fi
                 read -r -p "按回车键继续..."
@@ -1176,7 +1178,9 @@ certificate_management() {
             4)
                 reinstall_certificate ""
                 local reinstall_result=$?
-                if [[ $reinstall_result -eq 2 ]]; then
+                if [[ $reinstall_result -eq 3 ]]; then
+                    return 0
+                elif [[ $reinstall_result -eq 2 ]]; then
                     continue
                 fi
                 read -r -p "按回车键继续..."
