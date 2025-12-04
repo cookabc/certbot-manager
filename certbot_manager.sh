@@ -123,6 +123,11 @@ get_user_input() {
         read -r user_input
         echo
 
+        if [[ "$input_type" == "domain" || "$input_type" == "email" ]]; then
+            user_input="${user_input#"${user_input%%[![:space:]]*}"}"
+            user_input="${user_input%"${user_input##*[![:space:]]}"}"
+        fi
+
         # 检查返回操作
         if [[ "$user_input" == "back" || "$user_input" == "返回" || "$user_input" == "b" || "$user_input" == "B" ]]; then
             return 1  # 返回码1表示返回
@@ -529,7 +534,9 @@ create_certificate() {
     fi
 
     # 检查并转换Punycode域名
-    if ! domain=$(convert_to_punycode "$domain"); then
+    if domain=$(convert_to_punycode "$domain"); then
+        :
+    else
         print_status "error" "域名转换失败"
         return 2
     fi
