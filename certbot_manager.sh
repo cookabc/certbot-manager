@@ -22,7 +22,7 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # 版本信息
-VERSION="1.1.0"
+VERSION="1.1.1"
 GITHUB_REPO="https://github.com/cookabc/certbot-manager"
 
 # 显示帮助信息
@@ -169,9 +169,25 @@ get_user_input() {
                     continue
                 fi
 
-                # 基本域名格式验证
-                if [[ ! "$user_input" =~ ^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$ ]]; then
-                    print_status "error" "域名格式不正确，请重新输入"
+                # 改进的域名格式验证 - 使用更宽松和准确的验证
+                # 检查基本格式：不以点开头或结尾，不包含连续的点
+                if [[ "$user_input" =~ ^\. ]] || [[ "$user_input" =~ \.$ ]] || [[ "$user_input" =~ \.\. ]]; then
+                    print_status "error" "域名格式不正确：不能以点开头或结尾，不能包含连续的点"
+                    print_status "info" "正确格式示例: example.com, sub.example.org"
+                    print_status "info" "输入 'back' 返回上级菜单，输入 'cancel' 取消操作"
+                    continue
+                fi
+
+                # 检查长度和基本字符
+                if [[ ${#user_input} -gt 253 ]] || [[ ${#user_input} -lt 3 ]]; then
+                    print_status "error" "域名长度必须在3-253个字符之间"
+                    print_status "info" "输入 'back' 返回上级菜单，输入 'cancel' 取消操作"
+                    continue
+                fi
+
+                # 简化的域名验证 - 检查是否包含至少一个点和有效字符
+                if [[ ! "$user_input" =~ ^[a-zA-Z0-9]([a-zA-Z0-9.\-]*[a-zA-Z0-9])?$ ]] || [[ ! "$user_input" =~ \. ]]; then
+                    print_status "error" "域名格式不正确，请输入有效的域名格式"
                     print_status "info" "正确格式示例: example.com, sub.example.org"
                     print_status "info" "输入 'back' 返回上级菜单，输入 'cancel' 取消操作"
                     continue

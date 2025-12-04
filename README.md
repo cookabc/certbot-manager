@@ -1,6 +1,6 @@
 # Certbot Manager - SSL证书管理工具
 
-**版本: v1.1.0** | **仓库: https://github.com/cookabc/certbot-manager**
+**版本: v1.1.1** | **仓库: https://github.com/cookabc/certbot-manager**
 
 一个功能强大的纯Shell脚本工具，用于简化Let's Encrypt SSL证书的申请、管理和续期。
 

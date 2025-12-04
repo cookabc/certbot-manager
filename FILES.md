@@ -1,6 +1,6 @@
 # 项目文件说明
 
-**版本: v1.1.0** | **仓库: https://github.com/cookabc/certbot-manager**
+**版本: v1.1.1** | **仓库: https://github.com/cookabc/certbot-manager**
 
 ## 📁 核心文件
 
