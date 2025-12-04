@@ -509,7 +509,11 @@ create_certificate() {
 
     # 如果没有提供域名，则交互式获取
     if [[ -z "$domain" ]]; then
-        if ! domain=$(get_user_input "请输入域名: " false "domain"); then
+        print_status "info" "步骤 1/3：请输入要签发证书的域名"
+        print_status "info" "示例: example.com 或 www.example.com"
+        print_status "info" "可输入中文域名（如：测试.中国），系统将自动转换为Punycode"
+        echo ""
+        if ! domain=$(get_user_input "域名（例如 example.com）: " false "domain"); then
             local result=$?
             case $result in
                 1) print_status "info" "返回上级菜单"; return 2 ;;
@@ -531,8 +535,11 @@ create_certificate() {
     fi
 
     # 获取邮箱地址
-    print_status "info" "请输入用于Let's Encrypt的邮箱地址"
-    if ! email=$(get_user_input "邮箱地址: " false "email"); then
+    print_status "info" "步骤 2/3：请输入用于 Let's Encrypt 的邮箱地址"
+    print_status "info" "用途：接收证书到期提醒与重要通知"
+    print_status "info" "示例: admin@example.com"
+    echo ""
+    if ! email=$(get_user_input "邮箱地址（用于接收到期提醒）: " false "email"); then
         local result=$?
         case $result in
             1) print_status "info" "返回上级菜单"; return 2 ;;
@@ -563,7 +570,7 @@ create_certificate() {
     echo ""
     # 显示证书信息确认（调试友好格式）
     echo ""
-    print_status "title" "证书信息确认"
+    print_status "title" "步骤 3/3：证书信息确认"
     echo "=================================================="
     echo "📍 域名: $domain"
     echo "📧 邮箱: $email"
