@@ -126,6 +126,8 @@ get_user_input() {
         if [[ "$input_type" == "domain" || "$input_type" == "email" ]]; then
             user_input="${user_input#"${user_input%%[![:space:]]*}"}"
             user_input="${user_input%"${user_input##*[![:space:]]}"}"
+            user_input=${user_input//$'\u200b'/}
+            user_input=${user_input//$'\ufeff'/}
         fi
 
         # 检查返回操作
@@ -202,6 +204,24 @@ get_user_input() {
 # Punycode转换函数（简化版本）
 convert_to_punycode() {
     local domain=$1
+    # 规范化常见的非ASCII连字符和点等符号
+    domain=${domain//$'\u200b'/}
+    domain=${domain//$'\ufeff'/}
+    domain=${domain//$'\u00a0'/}
+    domain=${domain//$'\u200d'/}
+    domain=${domain//$'\u2060'/}
+    domain=${domain//$'\u180e'/}
+    # 各类破折号/连字符统一为 ASCII '-'
+    domain=${domain//$'\u2010'/-}
+    domain=${domain//$'\u2011'/-}
+    domain=${domain//$'\u2012'/-}
+    domain=${domain//$'\u2013'/-}
+    domain=${domain//$'\u2014'/-}
+    domain=${domain//$'\u2212'/-}
+    domain=${domain//$'\uff0d'/-}
+    # 全角点与中文句号统一为 '.'
+    domain=${domain//$'\uff0e'/'.'}
+    domain=${domain//$'\u3002'/'.'}
     # 检查是否包含非ASCII字符（包括中文等Unicode字符）
     if [[ "$domain" =~ [^a-zA-Z0-9.-] ]]; then
         print_status "warning" "检测到国际化域名（包含非ASCII字符）"
