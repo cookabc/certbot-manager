@@ -26,11 +26,16 @@
 
 ### 安装和运行
 
-#### 方法1: 克隆GitHub仓库（推荐）
+#### 克隆GitHub仓库
 
 ```bash
-# 克隆仓库
+# 使用SSH克隆（推荐，需要SSH密钥）
 git clone git@github.com:cookabc/certbot-manager.git
+
+# 或使用HTTPS克隆
+git clone https://github.com/cookabc/certbot-manager.git
+
+# 进入项目目录
 cd certbot-manager
 
 # 启动帮助（推荐）
@@ -39,17 +44,7 @@ cd certbot-manager
 # 或直接使用命令
 ./certbot-manager.sh status    # 检查系统状态
 ./certbot-manager.sh install   # 安装certbot
-```
-
-#### 方法2: 克隆仓库
-
-```bash
-# 克隆仓库
-git clone https://github.com/cookabc/certbot-manager.git
-cd certbot-manager
-
-# 直接运行
-./certbot-manager.sh status
+./certbot-manager.sh status    # 直接运行状态检查
 ```
 
 由于项目采用模块化设计，所有功能分布在多个文件中，因此推荐使用`git clone`完整克隆仓库，而不是单独下载某个文件。
