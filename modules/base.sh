@@ -73,8 +73,13 @@ confirm_action() {
 detect_certbot_mode() {
     if command -v nginx &> /dev/null; then
         if certbot plugins 2>/dev/null | grep -q "nginx"; then
-            echo nginx
-            return 0
+            # 检查nginx配置是否有效
+            if nginx -t &> /dev/null; then
+                echo nginx
+                return 0
+            else
+                print_status "warning" "Nginx配置无效，将使用standalone模式"
+            fi
         fi
     fi
     echo standalone
