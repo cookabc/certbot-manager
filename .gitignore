@@ -11,6 +11,7 @@ Thumbs.db
 .claude/
 .vscode/
 .idea/
+.trae/
 *.swp
 *.swo
 *~
