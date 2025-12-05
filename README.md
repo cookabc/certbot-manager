@@ -1,18 +1,20 @@
 # Certbot Manager - SSL证书管理工具
 
-**版本: v1.1.1** | **仓库: https://github.com/cookabc/certbot-manager**
+**版本: v2.0.0** | **仓库: https://github.com/cookabc/certbot-manager**
 
-一个功能强大的纯Shell脚本工具，用于简化Let's Encrypt SSL证书的申请、管理和续期。
+一个轻量级、模块化的纯Shell脚本工具，用于简化Let's Encrypt SSL证书的申请、管理和续期。
 
 ## ✨ 功能特性
 
 - 🔍 **系统检查**: 自动检测certbot和nginx安装状态
-- 📋 **证书生成**: 通过交互式界面创建SSL证书
+- 📋 **证书生成**: 快速创建SSL证书
 - 🔧 **配置验证**: 检查nginx SSL配置是否正确
 - ⏰ **自动续期**: 设置和管理证书自动续期（systemd/cron）
 - 📝 **证书管理**: 列出、查看和管理已安装证书
 - 🎨 **彩色界面**: 美观的彩色命令行界面
 - 🔧 **跨平台**: 支持Linux/Ubuntu/CentOS/macOS
+- 📦 **模块化设计**: 清晰的功能模块划分，便于维护和扩展
+- ⚙️ **配置灵活**: 支持配置文件，方便用户自定义设置
 
 ## 🚀 快速开始
 
@@ -31,23 +33,23 @@
 git clone git@github.com:cookabc/certbot-manager.git
 cd certbot-manager
 
-# 启动交互式菜单（推荐）
-./certbot_manager.sh
+# 启动帮助（推荐）
+./certbot-manager.sh help
 
 # 或直接使用命令
-./certbot_manager.sh status    # 检查系统状态
-./certbot_manager.sh help      # 显示帮助
+./certbot-manager.sh status    # 检查系统状态
+./certbot-manager.sh install   # 安装certbot
 ```
 
 #### 方法2: 直接下载脚本
 
 ```bash
-# 下载脚本
-wget https://raw.githubusercontent.com/cookabc/certbot-manager/main/certbot_manager.sh
-chmod +x certbot_manager.sh
+# 下载脚本和模块
+git clone git@github.com:cookabc/certbot-manager.git
+cd certbot-manager
 
-# 启动交互式菜单
-./certbot_manager.sh
+# 或直接运行
+./certbot-manager.sh status
 ```
 
 ## 📖 使用说明
@@ -56,35 +58,46 @@ chmod +x certbot_manager.sh
 
 ```bash
 # 基本操作
-./certbot_manager.sh status           # 显示系统状态
-./certbot_manager.sh list             # 列出已安装证书
-./certbot_manager.sh install          # 安装certbot
-./certbot_manager.sh create example.com  # 创建SSL证书
-./certbot_manager.sh renew            # 手动续期证书
-./certbot_manager.sh renew-setup      # 设置自动续期
-./certbot_manager.sh nginx-check      # 检查nginx配置
-./certbot_manager.sh interactive      # 交互式菜单
-./certbot_manager.sh help            # 显示帮助
+./certbot-manager.sh status           # 显示系统状态
+./certbot-manager.sh list             # 列出已安装证书
+./certbot-manager.sh install          # 安装certbot
+./certbot-manager.sh create example.com  # 创建SSL证书
+./certbot-manager.sh delete example.com  # 删除SSL证书
+./certbot-manager.sh renew            # 手动续期证书
+./certbot-manager.sh renew-setup      # 设置自动续期
+./certbot-manager.sh nginx-check      # 检查nginx配置
+./certbot-manager.sh help             # 显示帮助
+./certbot-manager.sh version          # 显示版本信息
 ```
 
-### 交互式菜单
+### 配置文件
 
-启动交互式菜单，通过数字选择操作：
+1. 将 `config.example.conf` 复制为 `config.conf`
+2. 根据需要修改配置选项
+3. 配置文件支持全局设置，简化命令行操作
 
 ```bash
-./certbot_manager.sh
+# 复制配置文件
+cp config.example.conf config.conf
+
+# 编辑配置文件
+nano config.conf
 ```
 
-菜单选项：
-1. 显示系统状态
-2. 列出已安装证书
-3. 安装certbot
-4. 创建SSL证书
-5. 续期证书
-6. 设置自动续期
-7. 检查nginx配置
-8. 帮助信息
-9. 退出
+## 📁 项目结构
+
+```
+certbot-manager/
+├── certbot-manager.sh      # 主程序入口
+├── config.example.conf     # 示例配置文件
+├── README.md               # 项目文档
+└── modules/                # 功能模块目录
+    ├── base.sh             # 基础架构模块
+    ├── system.sh           # 系统检查模块
+    ├── certbot.sh          # Certbot管理模块
+    ├── certificate.sh      # 证书管理模块
+    └── renewal.sh          # 自动续期模块
+```
 
 ## 🎯 功能详解
 
@@ -96,11 +109,45 @@ chmod +x certbot_manager.sh
 - ✅ 已安装证书数量
 - ✅ 自动续期设置状态
 
-### SSL证书创建
+```bash
+./certbot-manager.sh status
+```
 
-支持两种模式：
+### Certbot管理
+
+支持多种安装方式：
+- **apt**: Debian/Ubuntu系统
+- **yum**: CentOS/RHEL系统
+- **brew**: macOS系统
+- **snap**: Ubuntu 18.04+系统
+
+```bash
+# 安装certbot
+./certbot-manager.sh install
+
+# 卸载certbot
+./certbot-manager.sh uninstall
+```
+
+### SSL证书管理
+
+支持两种证书创建模式：
 - **Nginx模式**: 自动配置nginx SSL设置
 - **Standalone模式**: 临时停止nginx进行验证
+
+```bash
+# 创建SSL证书
+./certbot-manager.sh create example.com
+
+# 列出已安装证书
+./certbot-manager.sh list
+
+# 手动续期所有证书
+./certbot-manager.sh renew
+
+# 删除证书
+./certbot-manager.sh delete example.com
+```
 
 ### 自动续期设置
 
@@ -108,48 +155,29 @@ chmod +x certbot_manager.sh
 - **Systemd Timer**: 现代Linux系统的首选
 - **Cron任务**: 传统系统的备用方案
 
-### 多平台支持
-
-- **Ubuntu/Debian**: 使用apt包管理器
-- **CentOS/RHEL**: 使用yum包管理器
-- **macOS**: 使用Homebrew
-- **其他系统**: 提供手动安装指导
-
-## 📋 使用示例
-
-### 快速开始流程
-
 ```bash
-# 1. 检查系统状态
-./certbot_manager.sh status
-
-# 2. 安装certbot（如果未安装）
-sudo ./certbot_manager.sh install
-
-# 3. 创建SSL证书
-./certbot_manager.sh create example.com
-
-# 4. 设置自动续期
-sudo ./certbot_manager.sh renew-setup
-
-# 5. 验证安装
-./certbot_manager.sh list
+# 设置自动续期
+./certbot-manager.sh renew-setup
 ```
 
-### 批量管理
+### Nginx配置检查
+
+检查Nginx配置语法是否正确，并显示版本和配置文件位置。
 
 ```bash
-# 检查所有证书状态
-./certbot_manager.sh list
-
-# 手动续期所有证书
-sudo ./certbot_manager.sh renew
-
 # 检查nginx配置
-./certbot_manager.sh nginx-check
+./certbot-manager.sh nginx-check
 ```
 
 ## 🔧 高级功能
+
+### 配置文件说明
+
+配置文件支持以下节：
+- `[certbot]`: Certbot相关配置
+- `[nginx]`: Nginx相关配置
+- `[renewal]`: 自动续期相关配置
+- `[logging]`: 日志相关配置
 
 ### 系统服务配置
 
@@ -174,42 +202,6 @@ Persistent=true
 WantedBy=timers.target
 ```
 
-### Cron任务配置
-
-自动添加cron任务：
-
-```bash
-# 每天中午12点自动续期
-0 12 * * * /usr/bin/certbot renew --quiet
-```
-
-## 🎨 界面预览
-
-```
-🔧 Certbot SSL证书管理工具 v1.0.0
-==================================================
-
-🎯 系统状态检查
-==================================================
-✅ Certbot: 已安装
-   版本: certbot 2.6.0
-✅ Nginx: 安装成功，配置正确
-ℹ️ 已安装证书数量: 2
-✅ 自动续期: 已设置
-
-==================================================
-请选择操作:
-1) 显示系统状态
-2) 列出已安装证书
-3) 安装certbot
-4) 创建SSL证书
-5) 续期证书
-6) 设置自动续期
-7) 检查nginx配置
-8) 帮助信息
-9) 退出
-```
-
 ## 🔍 故障排除
 
 ### 常见问题
@@ -217,13 +209,13 @@ WantedBy=timers.target
 1. **权限不足**
    ```bash
    # 某些操作需要sudo权限
-   sudo ./certbot_manager.sh install
-   sudo ./certbot_manager.sh create example.com
+   sudo ./certbot-manager.sh install
+   sudo ./certbot-manager.sh create example.com
    ```
 
 2. **域名解析问题**
    ```bash
-   # 检查域名是否正确解析
+   # 检查域名是否正确解析到此服务器
    nslookup example.com
    dig example.com
    ```
@@ -238,7 +230,7 @@ WantedBy=timers.target
 4. **Nginx配置错误**
    ```bash
    # 检查nginx配置语法
-   ./certbot_manager.sh nginx-check
+   ./certbot-manager.sh nginx-check
    ```
 
 ### 日志查看
@@ -260,13 +252,8 @@ sudo tail -f /var/log/nginx/access.log
 cd certbot-manager
 git pull origin main
 
-# 重新下载脚本（如果直接下载）
-wget https://raw.githubusercontent.com/cookabc/certbot-manager/main/certbot_manager.sh -O certbot_manager.sh
-
-# 更新certbot
-sudo apt update && sudo apt upgrade certbot  # Ubuntu/Debian
-sudo yum update certbot                     # CentOS/RHEL
-brew upgrade certbot                        # macOS
+# 检查版本
+./certbot-manager.sh version
 ```
 
 ## 🔗 相关链接
