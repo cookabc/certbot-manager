@@ -86,6 +86,40 @@ detect_certbot_mode() {
     return 0
 }
 
+# 启动nginx服务
+start_nginx() {
+    if command -v systemctl &> /dev/null; then
+        sudo systemctl start nginx
+    elif command -v service &> /dev/null; then
+        sudo service nginx start
+    else
+        sudo nginx
+    fi
+}
+
+# 停止nginx服务
+stop_nginx() {
+    if command -v systemctl &> /dev/null; then
+        sudo systemctl stop nginx
+    elif command -v service &> /dev/null; then
+        sudo service nginx stop
+    else
+        sudo nginx -s stop
+    fi
+}
+
+# 检查nginx服务状态
+check_nginx_status() {
+    if command -v systemctl &> /dev/null; then
+        systemctl is-active --quiet nginx
+    elif command -v service &> /dev/null; then
+        service nginx status &> /dev/null
+    else
+        ps aux | grep -q "[n]ginx: master process"
+    fi
+    return $?
+}
+
 # 域名转换为Punycode（简化版）
 convert_to_punycode() {
     local domain=$1

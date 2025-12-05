@@ -168,6 +168,13 @@ create_certificate() {
     print_status "info" "开始为域名 $domain 创建SSL证书..."
 
     local success=false
+    local nginx_was_running=false
+    
+    # 检查nginx是否正在运行
+    if check_nginx_status; then
+        nginx_was_running=true
+    fi
+    
     if $nginx_available; then
         if check_root; then
             if certbot --nginx --non-interactive --agree-tos --email "$email" -d "$domain"; then success=true; fi
@@ -178,6 +185,12 @@ create_certificate() {
             return 1
         fi
     else
+        # 使用standalone模式，需要停止nginx服务
+        if $nginx_was_running; then
+            print_status "info" "停止nginx服务以使用standalone模式..."
+            stop_nginx
+        fi
+        
         if check_root; then
             if certbot certonly --standalone --non-interactive --agree-tos --email "$email" -d "$domain"; then success=true; fi
         elif command -v sudo &> /dev/null; then
@@ -185,6 +198,12 @@ create_certificate() {
         else
             print_status "error" "需要sudo权限以配置证书"
             return 1
+        fi
+        
+        # 如果nginx之前在运行，重新启动它
+        if $nginx_was_running; then
+            print_status "info" "重新启动nginx服务..."
+            start_nginx
         fi
     fi
 
