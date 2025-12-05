@@ -73,8 +73,8 @@ confirm_action() {
 detect_certbot_mode() {
     if command -v nginx &> /dev/null; then
         if certbot plugins 2>/dev/null | grep -q "nginx"; then
-            # 检查nginx配置是否有效
-            if nginx -t &> /dev/null; then
+            # 检查nginx配置是否有效（使用sudo和明确的配置文件，与certbot保持一致）
+            if sudo nginx -c /etc/nginx/nginx.conf -t &> /dev/null; then
                 echo nginx
                 return 0
             else
