@@ -41,16 +41,18 @@ cd certbot-manager
 ./certbot-manager.sh install   # 安装certbot
 ```
 
-#### 方法2: 直接下载脚本
+#### 方法2: 克隆仓库
 
 ```bash
-# 下载脚本和模块
-git clone git@github.com:cookabc/certbot-manager.git
+# 克隆仓库
+git clone https://github.com/cookabc/certbot-manager.git
 cd certbot-manager
 
-# 或直接运行
+# 直接运行
 ./certbot-manager.sh status
 ```
+
+由于项目采用模块化设计，所有功能分布在多个文件中，因此推荐使用`git clone`完整克隆仓库，而不是单独下载某个文件。
 
 ## 📖 使用说明
 
