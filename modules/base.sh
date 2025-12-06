@@ -147,10 +147,12 @@ convert_to_punycode() {
     domain=${domain//$'\u2013'/-}
     domain=${domain//$'\u2014'/-}
     domain=${domain//$'\u2212'/-}
-    domain=${domain//$'\uff0d'/-}
-    domain=${domain//$'\uff0e'/'.'}
-    domain=${domain//$'\u3002'/'.'}
-    if [[ "$domain" =~ ^[A-Za-z0-9.-]+$ ]] && [[ ! "$domain" =~ ^\. ]] && [[ ! "$domain" =~ \.$ ]] && [[ ! "$domain" =~ \.\. ]]; then
+    domain=${domain//$'－'/-}
+    domain=${domain//$'．'/'.'}
+    domain=${domain//$'。'/'.'}
+    # 允许通配符域名（以*开头）
+    # 简化正则表达式，确保正确匹配通配符域名
+    if [[ "$domain" == \*.* ]] || [[ "$domain" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]]; then
         echo "$domain"
         return 0
     fi
