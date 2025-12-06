@@ -139,23 +139,31 @@ create_certificate() {
     nginx_available=false
     mode=$(detect_certbot_mode)
     
-    # 再次检查Nginx配置，确保模式选择正确
-    if [[ "$mode" == "nginx" ]]; then
-        # 检查nginx配置是否有效
-        local nginx_conf_check
-        nginx_conf_check=$(sudo nginx -c /etc/nginx/nginx.conf -t 2>&1)
-        if [[ $? -eq 0 ]]; then
-            nginx_available=true
-            print_status "info" "检测到Nginx和插件，将使用nginx插件"
-        else
-            print_status "warning" "Nginx配置无效，强制切换到standalone模式"
-            mode="standalone"
-        fi
+    # 检查是否为通配符域名
+    if [[ "$domain" == \*.* ]]; then
+        print_status "warning" "检测到通配符域名，需要使用DNS验证方式"
+        print_status "warning" "Nginx插件不支持DNS验证，将使用manual模式"
+        mode="manual"
+        nginx_available=false
     else
-        if command -v nginx &> /dev/null; then
-            print_status "info" "检测到Nginx但未安装插件或配置无效，使用standalone模式"
+        # 再次检查Nginx配置，确保模式选择正确
+        if [[ "$mode" == "nginx" ]]; then
+            # 检查nginx配置是否有效
+            local nginx_conf_check
+            nginx_conf_check=$(sudo nginx -c /etc/nginx/nginx.conf -t 2>&1)
+            if [[ $? -eq 0 ]]; then
+                nginx_available=true
+                print_status "info" "检测到Nginx和插件，将使用nginx插件"
+            else
+                print_status "warning" "Nginx配置无效，强制切换到standalone模式"
+                mode="standalone"
+            fi
         else
-            print_status "info" "未检测到Nginx，将使用standalone模式（需要停止Web服务器）"
+            if command -v nginx &> /dev/null; then
+                print_status "info" "检测到Nginx但未安装插件或配置无效，使用standalone模式"
+            else
+                print_status "info" "未检测到Nginx，将使用standalone模式（需要停止Web服务器）"
+            fi
         fi
     fi
 
@@ -185,7 +193,22 @@ create_certificate() {
         nginx_was_running=true
     fi
     
-    if $nginx_available; then
+    # 处理通配符域名
+    if [[ "$domain" == \*.* ]]; then
+        print_status "info" "通配符域名需要DNS验证，将使用manual模式"
+        print_status "info" "系统将提示您添加DNS记录，请准备好DNS管理界面"
+        
+        # 通配符域名需要使用DNS验证，使用manual模式
+        if check_root; then
+            if certbot certonly --manual --preferred-challenges dns --agree-tos --email "$email" -d "$domain"; then success=true; fi
+        elif command -v sudo &> /dev/null; then
+            if sudo certbot certonly --manual --preferred-challenges dns --agree-tos --email "$email" -d "$domain"; then success=true; fi
+        else
+            print_status "error" "需要sudo权限以配置证书"
+            return 1
+        fi
+    elif $nginx_available; then
+        # 使用nginx插件模式
         if check_root; then
             if certbot --nginx --non-interactive --agree-tos --email "$email" -d "$domain"; then success=true; fi
         elif command -v sudo &> /dev/null; then
