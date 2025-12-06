@@ -173,7 +173,16 @@ create_certificate() {
     echo "=================================================="
     echo "📍 域名: $domain"
     echo "📧 邮箱: $email"
-    echo "🔧 模式: $([ "$nginx_available" = true ] && echo "Nginx插件" || echo "Standalone模式")"
+    # 正确显示当前使用的模式
+    local mode_display
+    if [[ "$domain" == \*.* ]]; then
+        mode_display="Manual模式(DNS验证)"
+    elif $nginx_available; then
+        mode_display="Nginx插件"
+    else
+        mode_display="Standalone模式"
+    fi
+    echo "🔧 模式: $mode_display"
     echo "=================================================="
     echo ""
 
@@ -242,7 +251,9 @@ create_certificate() {
 
     if $success; then
         print_status "success" "SSL证书创建成功！"
-        print_status "info" "证书文件位置: /etc/letsencrypt/live/$domain/"
+        # 修复通配符域名的证书文件位置显示
+        local cert_dir=$(sudo certbot certificates 2>/dev/null | grep -A 1 "Certificate Name: ${domain//\*/\*}" | grep "Certificate Path:" | awk '{print $3}' | sed 's/cert.pem$//' || echo "/etc/letsencrypt/live/${domain//\*/\*}/")
+        print_status "info" "证书文件位置: $cert_dir"
         print_status "info" "请确保Nginx配置正确指向证书文件"
     else
         print_status "error" "SSL证书创建失败"
