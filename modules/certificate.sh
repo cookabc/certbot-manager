@@ -138,12 +138,22 @@ create_certificate() {
 
     nginx_available=false
     mode=$(detect_certbot_mode)
+    
+    # 再次检查Nginx配置，确保模式选择正确
     if [[ "$mode" == "nginx" ]]; then
-        nginx_available=true
-        print_status "info" "检测到Nginx和插件，将使用nginx插件"
+        # 检查nginx配置是否有效
+        local nginx_conf_check
+        nginx_conf_check=$(sudo nginx -c /etc/nginx/nginx.conf -t 2>&1)
+        if [[ $? -eq 0 ]]; then
+            nginx_available=true
+            print_status "info" "检测到Nginx和插件，将使用nginx插件"
+        else
+            print_status "warning" "Nginx配置无效，强制切换到standalone模式"
+            mode="standalone"
+        fi
     else
         if command -v nginx &> /dev/null; then
-            print_status "info" "检测到Nginx但未安装插件，使用standalone模式"
+            print_status "info" "检测到Nginx但未安装插件或配置无效，使用standalone模式"
         else
             print_status "info" "未检测到Nginx，将使用standalone模式（需要停止Web服务器）"
         fi

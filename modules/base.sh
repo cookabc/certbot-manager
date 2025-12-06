@@ -71,16 +71,26 @@ confirm_action() {
 # 检测certbot模式
 # 返回: nginx 或 standalone
 detect_certbot_mode() {
+    # 先检查nginx是否可用
     if command -v nginx &> /dev/null; then
+        # 检查certbot是否有nginx插件
         if certbot plugins 2>/dev/null | grep -q "nginx"; then
-            # 检查nginx配置是否有效（使用sudo和明确的配置文件，与certbot保持一致）
-            if sudo nginx -c /etc/nginx/nginx.conf -t &> /dev/null; then
+            # 不使用sudo检查配置，避免权限问题
+            # 因为实际运行时certbot会使用sudo
+            local nginx_conf_check
+            nginx_conf_check=$(sudo nginx -c /etc/nginx/nginx.conf -t 2>&1)
+            if [[ $? -eq 0 ]]; then
                 echo nginx
                 return 0
             else
-                print_status "warning" "Nginx配置无效，将使用standalone模式"
+                print_status "warning" "Nginx配置无效: $nginx_conf_check"
+                print_status "warning" "将使用standalone模式"
             fi
+        else
+            print_status "warning" "未检测到certbot nginx插件，将使用standalone模式"
         fi
+    else
+        print_status "warning" "未检测到Nginx，将使用standalone模式"
     fi
     echo standalone
     return 0
