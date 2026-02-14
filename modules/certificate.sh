@@ -122,9 +122,25 @@ create_certificate() {
         return 2
     fi
 
+    # 验证域名格式（更严格的校验）
+    # 支持通配符 *.example.com
+    if [[ ! "$domain" =~ ^(\*\.)?([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$ ]]; then
+        # 排除 localhost
+        if [[ "$domain" != "localhost" ]]; then
+             print_status "warning" "域名格式可能不标准，建议检查: $domain"
+        fi
+    fi
+
     # 获取邮箱地址
-    echo -n "请输入用于 Let's Encrypt 的邮箱地址: "
-    read -r email
+    local email=""
+    if [[ -n "$CERTBOT_EMAIL" ]]; then
+        email="$CERTBOT_EMAIL"
+        print_status "info" "使用配置文件中的邮箱: $email"
+    else
+        echo -n "请输入用于 Let's Encrypt 的邮箱地址: "
+        read -r email
+    fi
+    
     if [[ -z "$email" ]]; then
         print_status "error" "邮箱地址不能为空"
         return 2
@@ -139,11 +155,26 @@ create_certificate() {
     nginx_available=false
     mode=$(detect_certbot_mode)
     
+    local dns_plugin_mode=false
+    local dns_plugin_name=""
+    local dns_credentials_file=""
+    
     # 检查是否为通配符域名
     if [[ "$domain" == \*.* ]]; then
         print_status "warning" "检测到通配符域名，需要使用DNS验证方式"
-        print_status "warning" "Nginx插件不支持DNS验证，将使用manual模式"
-        mode="manual"
+        
+        # 检查是否配置了 DNS 插件
+        if [[ -n "${CERTBOT_DNS_PLUGIN:-}" ]]; then
+             dns_plugin_name="$CERTBOT_DNS_PLUGIN"
+             dns_credentials_file="${CERTBOT_DNS_CREDENTIALS:-}"
+             dns_plugin_mode=true
+             mode="dns-plugin"
+             print_status "info" "使用配置的 DNS 插件: $dns_plugin_name"
+        else
+             print_status "warning" "Nginx插件不支持DNS验证，将使用manual模式"
+             mode="manual"
+        fi
+        
         nginx_available=false
     else
         # 再次检查Nginx配置，确保模式选择正确
@@ -175,7 +206,9 @@ create_certificate() {
     echo "📧 邮箱: $email"
     # 正确显示当前使用的模式
     local mode_display
-    if [[ "$domain" == \*.* ]]; then
+    if $dns_plugin_mode; then
+        mode_display="DNS插件模式 ($dns_plugin_name)"
+    elif [[ "$domain" == \*.* ]]; then
         mode_display="Manual模式(DNS验证)"
     elif $nginx_available; then
         mode_display="Nginx插件"
@@ -204,17 +237,35 @@ create_certificate() {
     
     # 处理通配符域名
     if [[ "$domain" == \*.* ]]; then
-        print_status "info" "通配符域名需要DNS验证，将使用manual模式"
-        print_status "info" "系统将提示您添加DNS记录，请准备好DNS管理界面"
-        
-        # 通配符域名需要使用DNS验证，使用manual模式
-        if check_root; then
-            if certbot certonly --manual --preferred-challenges dns --agree-tos --email "$email" -d "$domain"; then success=true; fi
-        elif command -v sudo &> /dev/null; then
-            if sudo certbot certonly --manual --preferred-challenges dns --agree-tos --email "$email" -d "$domain"; then success=true; fi
+        if $dns_plugin_mode; then
+            print_status "info" "使用 DNS 插件进行验证..."
+            local cmd="certbot certonly --non-interactive --agree-tos --email \"$email\" -d \"$domain\" --dns-${dns_plugin_name}"
+            
+            if [[ -n "$dns_credentials_file" ]]; then
+                cmd="$cmd --dns-${dns_plugin_name}-credentials \"$dns_credentials_file\""
+            fi
+            
+            if check_root; then
+                if eval "$cmd"; then success=true; fi
+            elif command -v sudo &> /dev/null; then
+                if eval "sudo $cmd"; then success=true; fi
+            else
+                print_status "error" "需要sudo权限以配置证书"
+                return 1
+            fi
         else
-            print_status "error" "需要sudo权限以配置证书"
-            return 1
+            print_status "info" "通配符域名需要DNS验证，将使用manual模式"
+            print_status "info" "系统将提示您添加DNS记录，请准备好DNS管理界面"
+            
+            # 通配符域名需要使用DNS验证，使用manual模式
+            if check_root; then
+                if certbot certonly --manual --preferred-challenges dns --agree-tos --email "$email" -d "$domain"; then success=true; fi
+            elif command -v sudo &> /dev/null; then
+                if sudo certbot certonly --manual --preferred-challenges dns --agree-tos --email "$email" -d "$domain"; then success=true; fi
+            else
+                print_status "error" "需要sudo权限以配置证书"
+                return 1
+            fi
         fi
     elif $nginx_available; then
         # 使用nginx插件模式
