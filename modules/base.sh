@@ -23,10 +23,33 @@ check_root() {
     fi
 }
 
+# 日志记录函数
+log_message() {
+    local level=$1
+    local message=$2
+    
+    # 检查是否配置了日志文件
+    if [[ -n "${LOGGING_FILE:-}" ]]; then
+        local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+        # 确保日志目录存在
+        local log_dir=$(dirname "$LOGGING_FILE")
+        if [[ ! -d "$log_dir" ]]; then
+            mkdir -p "$log_dir" 2>/dev/null || return
+        fi
+        
+        # 写入日志
+        echo "[$timestamp] [$level] $message" >> "$LOGGING_FILE" 2>/dev/null || true
+    fi
+}
+
 # 显示带颜色的消息
 print_status() {
     local status=$1
     local message=$2
+    
+    # 记录日志
+    log_message "$status" "$message"
+
     case $status in
         "success")
             echo -e "${GREEN}✅ $message${NC}"
@@ -157,6 +180,38 @@ convert_to_punycode() {
         return 0
     fi
     return 1
+}
+
+# 加载配置文件
+load_config() {
+    local config_file="$1"
+    if [[ -f "$config_file" ]]; then
+        local current_section=""
+        while IFS='=' read -r key value || [[ -n "$key" ]]; do
+            # 忽略注释和空行
+            [[ $key =~ ^#.* ]] && continue
+            [[ -z $key ]] && continue
+            
+            # 处理section headers [section]
+            if [[ $key =~ ^\[(.*)\]$ ]]; then
+                current_section="${BASH_REMATCH[1]}"
+                continue
+            fi
+            
+            # 移除行内注释
+            value=$(echo "$value" | sed 's/[[:space:]]*#.*//')
+            # 移除首尾空格
+            key=$(echo "$key" | xargs)
+            value=$(echo "$value" | xargs)
+            
+            if [[ -n $current_section && -n $key ]]; then
+                # 构造变量名: SECTION_KEY (大写)
+                local var_name=$(echo "${current_section}_${key}" | tr '[:lower:]' '[:upper:]')
+                # 导出环境变量
+                export "$var_name"="$value"
+            fi
+        done < "$config_file"
+    fi
 }
 
 # 显示帮助信息

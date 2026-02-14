@@ -20,8 +20,15 @@ setup_auto_renew() {
         print_status "success" "自动续期已设置"
         return 0
     fi
+    
+    local method=""
+    if [[ -n "$RENEWAL_METHOD" ]]; then
+        method="$RENEWAL_METHOD"
+        print_status "info" "使用配置文件中的续期方式: $method"
+    fi
 
     # 尝试使用systemd
+    if [[ -z "$method" || "$method" == "systemd" ]]; then
     if command -v systemctl &> /dev/null && check_root; then
         print_status "info" "尝试使用systemd timer设置自动续期..."
 
@@ -53,8 +60,10 @@ EOF
             return 0
         fi
     fi
+    fi
 
     # 备用方案：使用cron
+    if [[ -z "$method" || "$method" == "cron" ]]; then
     if command -v crontab &> /dev/null; then
         print_status "info" "使用cron设置自动续期..."
 
@@ -70,6 +79,7 @@ EOF
             print_status "success" "自动续期设置成功（cron）"
             return 0
         fi
+    fi
     fi
 
     print_status "error" "自动续期设置失败"

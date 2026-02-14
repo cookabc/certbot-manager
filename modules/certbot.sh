@@ -17,10 +17,15 @@ install_certbot() {
     fi
 
     print_status "info" "检测操作系统并安装certbot..."
-
+    
     local install_method=""
+    if [[ -n "$CERTBOT_INSTALL_METHOD" && "$CERTBOT_INSTALL_METHOD" != "auto" ]]; then
+        install_method="$CERTBOT_INSTALL_METHOD"
+        print_status "info" "使用配置文件中的安装方式: $install_method"
+    fi
 
-    if [[ -f /etc/debian_version ]]; then
+    if [[ -z "$install_method" ]]; then
+        if [[ -f /etc/debian_version ]]; then
         print_status "info" "检测到Debian/Ubuntu系统"
         if command -v snap &> /dev/null; then
             install_method="snap"
@@ -49,6 +54,7 @@ install_certbot() {
         print_status "error" "不支持的操作系统"
         print_status "info" "请手动安装certbot: https://certbot.eff.org/"
         return 2
+    fi
     fi
 
     # 确认安装
