@@ -24,6 +24,12 @@ source "$MODULES_DIR/certbot.sh"
 source "$MODULES_DIR/certificate.sh"
 source "$MODULES_DIR/renewal.sh"
 
+# 加载配置文件
+CONFIG_FILE="$(dirname "$0")/config.conf"
+if [[ -f "$CONFIG_FILE" ]]; then
+    load_config "$CONFIG_FILE"
+fi
+
 # 显示版本信息
 show_version() {
     echo "🔧 Certbot SSL证书管理工具"
