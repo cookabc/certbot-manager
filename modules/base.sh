@@ -23,22 +23,34 @@ check_root() {
     fi
 }
 
+# 强制要求root权限
+require_root() {
+    if ! check_root; then
+        print_status "error" "此操作需要root权限"
+        print_status "info" "请使用 sudo 运行此脚本"
+        exit 1
+    fi
+}
+
 # 日志记录函数
 log_message() {
     local level=$1
     local message=$2
     
+    # 获取日志文件路径 (优先使用 CM_LOGGING_FILE)
+    local log_file="${CM_LOGGING_FILE:-${LOGGING_FILE:-}}"
+
     # 检查是否配置了日志文件
-    if [[ -n "${LOGGING_FILE:-}" ]]; then
+    if [[ -n "$log_file" ]]; then
         local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
         # 确保日志目录存在
-        local log_dir=$(dirname "$LOGGING_FILE")
+        local log_dir=$(dirname "$log_file")
         if [[ ! -d "$log_dir" ]]; then
             mkdir -p "$log_dir" 2>/dev/null || return
         fi
         
         # 写入日志
-        echo "[$timestamp] [$level] $message" >> "$LOGGING_FILE" 2>/dev/null || true
+        echo "[$timestamp] [${level^^}] $message" >> "$log_file" 2>/dev/null || true
     fi
 }
 
@@ -67,6 +79,17 @@ print_status() {
             echo -e "${PURPLE}🎯 $message${NC}"
             ;;
     esac
+}
+
+# 检查依赖项
+check_dependencies() {
+    local deps=("openssl")
+    # check for other critical dependencies if needed
+    for dep in "${deps[@]}"; do
+        if ! command -v "$dep" &> /dev/null; then
+            print_status "warning" "未找到命令: $dep"
+        fi
+    done
 }
 
 # 确认操作函数
@@ -101,19 +124,26 @@ detect_certbot_mode() {
             # 不使用sudo检查配置，避免权限问题
             # 因为实际运行时certbot会使用sudo
             local nginx_conf_check
-            nginx_conf_check=$(sudo nginx -c /etc/nginx/nginx.conf -t 2>&1)
-            if [[ $? -eq 0 ]]; then
-                echo nginx
-                return 0
+            # 这里可能需要 root 权限，但只是为了检测，尝试执行
+            if check_root || sudo -n true 2>/dev/null; then
+                 nginx_conf_check=$(sudo nginx -c /etc/nginx/nginx.conf -t 2>&1)
+                 if [[ $? -eq 0 ]]; then
+                     echo nginx
+                     return 0
+                 else
+                     print_status "warning" "Nginx配置无效: $nginx_conf_check" >&2
+                     print_status "warning" "将使用standalone模式" >&2
+                 fi
             else
-                print_status "warning" "Nginx配置无效: $nginx_conf_check"
-                print_status "warning" "将使用standalone模式"
+                 # 无法验证配置，假定可以
+                 echo nginx
+                 return 0
             fi
         else
-            print_status "warning" "未检测到certbot nginx插件，将使用standalone模式"
+            print_status "warning" "未检测到certbot nginx插件，将使用standalone模式" >&2
         fi
     else
-        print_status "warning" "未检测到Nginx，将使用standalone模式"
+        print_status "warning" "未检测到Nginx，将使用standalone模式" >&2
     fi
     echo standalone
     return 0
@@ -153,9 +183,18 @@ check_nginx_status() {
     return $?
 }
 
-# 域名转换为Punycode（简化版）
+# 域名转换为Punycode
 convert_to_punycode() {
     local domain=$1
+
+    # 尝试使用 idn 命令
+    if command -v idn &> /dev/null; then
+        if idn --quiet "$domain" 2>/dev/null; then
+             return 0
+        fi
+    fi
+
+    # 简化版手动转换逻辑
     domain=${domain//$'\r'/}
     domain=${domain//$'\u200b'/}
     domain=${domain//$'\ufeff'/}
@@ -205,8 +244,8 @@ load_config() {
             value=$(echo "$value" | xargs)
             
             if [[ -n $current_section && -n $key ]]; then
-                # 构造变量名: SECTION_KEY (大写)
-                local var_name=$(echo "${current_section}_${key}" | tr '[:lower:]' '[:upper:]')
+                # 构造变量名: CM_SECTION_KEY (大写, 前缀CM_)
+                local var_name=$(echo "CM_${current_section}_${key}" | tr '[:lower:]' '[:upper:]')
                 # 导出环境变量
                 export "$var_name"="$value"
             fi

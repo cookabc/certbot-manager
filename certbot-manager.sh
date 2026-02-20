@@ -5,6 +5,14 @@
 
 set -euo pipefail
 
+# Trap signals
+cleanup() {
+    # Perform any necessary cleanup here
+    # For now, just exit gracefully
+    exit $?
+}
+trap cleanup SIGINT SIGTERM
+
 # 加载所有模块
 MODULES_DIR="$(dirname "$0")/modules"
 
@@ -41,6 +49,9 @@ show_version() {
 
 # 主函数
 main() {
+    # Check dependencies before running commands that might need them
+    check_dependencies
+
     case "${1:-help}" in
         "status")
             show_system_status
@@ -55,10 +66,10 @@ main() {
             uninstall_certbot
             ;;
         "create")
-            create_certificate "$2"
+            create_certificate "${2:-}"
             ;;
         "delete")
-            uninstall_certificate "$2"
+            uninstall_certificate "${2:-}"
             ;;
         "renew")
             renew_certificates
