@@ -19,55 +19,55 @@ install_certbot() {
     print_status "info" "检测操作系统并安装certbot..."
     
     local install_method=""
-    if [[ -n "$CERTBOT_INSTALL_METHOD" && "$CERTBOT_INSTALL_METHOD" != "auto" ]]; then
-        install_method="$CERTBOT_INSTALL_METHOD"
+    if [[ -n "${CM_CERTBOT_INSTALL_METHOD:-}" && "${CM_CERTBOT_INSTALL_METHOD:-}" != "auto" ]]; then
+        install_method="$CM_CERTBOT_INSTALL_METHOD"
         print_status "info" "使用配置文件中的安装方式: $install_method"
     fi
 
     if [[ -z "$install_method" ]]; then
         if [[ -f /etc/debian_version ]]; then
-        print_status "info" "检测到Debian/Ubuntu系统"
-        if command -v snap &> /dev/null; then
-            install_method="snap"
+            print_status "info" "检测到Debian/Ubuntu系统"
+            if command -v snap &> /dev/null; then
+                install_method="snap"
+            else
+                install_method="apt"
+            fi
+        elif [[ -f /etc/redhat-release ]]; then
+            # CentOS/RHEL
+            print_status "info" "检测到CentOS/RHEL系统"
+            install_method="yum"
+        elif command -v brew &> /dev/null; then
+            # macOS
+            print_status "info" "检测到macOS系统，使用brew安装"
+            install_method="brew"
         else
-            install_method="apt"
-        fi
-        if ! check_root; then
-            print_status "warning" "需要root权限安装"
-            print_status "info" "请运行: sudo $0 install"
+            print_status "error" "不支持的操作系统"
+            print_status "info" "请手动安装certbot: https://certbot.eff.org/"
             return 2
         fi
-    elif [[ -f /etc/redhat-release ]]; then
-        # CentOS/RHEL
-        print_status "info" "检测到CentOS/RHEL系统"
-        install_method="yum"
-        if ! check_root; then
-            print_status "warning" "需要root权限安装"
-            print_status "info" "请运行: sudo $0 install"
-            return 2
-        fi
-    elif command -v brew &> /dev/null; then
-        # macOS
-        print_status "info" "检测到macOS系统，使用brew安装"
-        install_method="brew"
-    else
-        print_status "error" "不支持的操作系统"
-        print_status "info" "请手动安装certbot: https://certbot.eff.org/"
-        return 2
     fi
+
+    # 检查root权限（除非是brew安装）
+    if [[ "$install_method" != "brew" ]]; then
+        require_root
     fi
 
     # 确认安装
     echo ""
     print_status "info" "即将安装Certbot："
     print_status "info" "  安装方式: $install_method"
-    print_status "info" "  系统类型: $([ "$install_method" = "apt" ] && echo "Debian/Ubuntu" || [ "$install_method" = "yum" ] && echo "CentOS/RHEL" || echo "macOS")"
     echo ""
 
     confirm_action "确认要安装Certbot吗？"
     if [[ $? -ne 0 ]]; then
         print_status "info" "操作已取消"
         return 2
+    fi
+
+    # Dry-run check
+    if [[ "${DRY_RUN:-false}" == "true" ]]; then
+        print_status "info" "[DRY RUN] 将执行安装命令: $install_method install certbot"
+        return 0
     fi
 
     print_status "info" "开始安装Certbot..."
@@ -106,6 +106,11 @@ uninstall_certbot() {
     if ! command -v certbot &> /dev/null; then
         print_status "info" "Certbot未安装，无需卸载"
         return 2
+    fi
+
+    # 检查root权限（除非是brew安装，但卸载通常也需要）
+    if [[ "$(uname)" != "Darwin" ]]; then
+        require_root
     fi
 
     # 获取certbot版本信息
@@ -147,30 +152,24 @@ uninstall_certbot() {
         return 2
     fi
 
+    # Dry-run check
+    if [[ "${DRY_RUN:-false}" == "true" ]]; then
+        print_status "info" "[DRY RUN] 将执行卸载命令和清理操作"
+        return 0
+    fi
+
     print_status "info" "开始卸载Certbot..."
 
     # 根据安装方式选择卸载方法
     if [[ -f /etc/debian_version ]]; then
         # Debian/Ubuntu
-        if check_root; then
-            print_status "info" "使用apt卸载..."
-            apt remove --purge -y certbot python3-certbot-nginx python3-certbot-apache 2>/dev/null || true
-            apt autoremove -y 2>/dev/null || true
-        else
-            print_status "error" "需要root权限进行卸载"
-            print_status "info" "请运行: sudo $0 uninstall"
-            return 2
-        fi
+        print_status "info" "使用apt卸载..."
+        apt remove --purge -y certbot python3-certbot-nginx python3-certbot-apache 2>/dev/null || true
+        apt autoremove -y 2>/dev/null || true
     elif [[ -f /etc/redhat-release ]]; then
         # CentOS/RHEL
-        if check_root; then
-            print_status "info" "使用yum卸载..."
-            yum remove -y certbot python3-certbot-nginx python3-certbot-apache 2>/dev/null || true
-        else
-            print_status "error" "需要root权限进行卸载"
-            print_status "info" "请运行: sudo $0 uninstall"
-            return 2
-        fi
+        print_status "info" "使用yum卸载..."
+        yum remove -y certbot python3-certbot-nginx python3-certbot-apache 2>/dev/null || true
     elif command -v brew &> /dev/null; then
         # macOS
         print_status "info" "使用brew卸载..."
@@ -180,21 +179,23 @@ uninstall_certbot() {
     fi
 
     # 删除证书文件
-    if $delete_certs && check_root; then
+    if $delete_certs; then
         print_status "info" "删除SSL证书文件..."
         rm -rf /etc/letsencrypt 2>/dev/null || true
     fi
 
     # 移除自动续期配置
-    if check_root; then
-        print_status "info" "移除自动续期配置..."
-        # 移除systemd timer
+    print_status "info" "移除自动续期配置..."
+    # 移除systemd timer
+    if command -v systemctl &> /dev/null; then
         systemctl stop certbot.timer 2>/dev/null || true
         systemctl disable certbot.timer 2>/dev/null || true
         rm -f /etc/systemd/system/certbot.service /etc/systemd/system/certbot.timer 2>/dev/null || true
         systemctl daemon-reload 2>/dev/null || true
+    fi
 
-        # 移除cron任务
+    # 移除cron任务
+    if command -v crontab &> /dev/null; then
         (crontab -l 2>/dev/null | grep -v "certbot renew") | crontab - 2>/dev/null || true
     fi
 
