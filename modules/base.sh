@@ -238,7 +238,7 @@ load_config() {
             fi
             
             # 移除行内注释
-            value=$(echo "$value" | sed 's/[[:space:]]*#.*//')
+            value=$(echo "$value" | sed 's/^[[:space:]]*#.*//; s/[[:space:]][[:space:]]*#.*//')
             # 移除首尾空格
             key=$(echo "$key" | xargs)
             value=$(echo "$value" | xargs)
