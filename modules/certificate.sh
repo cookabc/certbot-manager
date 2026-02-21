@@ -214,13 +214,13 @@ create_certificate() {
     case "$mode" in
         "dns-plugin")
             print_status "info" "使用 DNS 插件进行验证..."
-            local cmd="certbot certonly --non-interactive --agree-tos --email \"$email\" -d \"$domain\" --dns-${dns_plugin_name}"
+            local cmd=(certbot certonly --non-interactive --agree-tos --email "$email" -d "$domain" --dns-"${dns_plugin_name}")
             
             if [[ -n "$dns_credentials_file" ]]; then
-                cmd="$cmd --dns-${dns_plugin_name}-credentials \"$dns_credentials_file\""
+                cmd+=(--dns-"${dns_plugin_name}-credentials" "$dns_credentials_file")
             fi
             
-            if eval "$cmd"; then success=true; fi
+            if "${cmd[@]}"; then success=true; fi
             ;;
 
         "manual")
@@ -403,9 +403,9 @@ renew_certificates() {
 
     require_root
 
-    local renew_cmd="certbot renew"
+    local renew_cmd=(certbot renew)
 
-    if eval "$renew_cmd"; then
+    if "${renew_cmd[@]}"; then
         print_status "success" "证书续期成功！"
     else
         print_status "error" "证书续期失败"
