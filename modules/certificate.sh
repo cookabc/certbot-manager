@@ -34,8 +34,9 @@ list_certificates_for_selection() {
     local domain
     while IFS= read -r line; do
         if [[ "$line" == *"Certificate Name:"* ]]; then
-            domain=$(echo "$line" | awk '{print $3}')
-            domains+=($domain)
+            domain=${line#*Certificate Name: }
+            domain=${domain%% *}
+            domains+=("$domain")
         fi
     done <<< "$cert_output"
 
@@ -74,9 +75,10 @@ list_certificates() {
         return 0
     fi
 
-    echo "$cert_output" | while IFS= read -r line; do
+    while IFS= read -r line; do
         if [[ "$line" == *"Certificate Name:"* ]]; then
-            domain=$(echo "$line" | awk '{print $3}')
+            domain=${line#*Certificate Name: }
+            domain=${domain%% *}
             echo ""
             print_status "info" "📋 证书域名: $domain"
         elif [[ "$line" == *"Expiry Date:"* ]]; then
@@ -89,7 +91,7 @@ list_certificates() {
             key_path=${line#*Private Key Path: }
             echo "   私钥路径: $key_path"
         fi
-    done
+    done <<< "$cert_output"
     echo ""
 }
 
@@ -181,7 +183,7 @@ create_certificate() {
         if [[ "$mode" == "nginx" ]]; then
             # 检查nginx配置是否有效
             local nginx_conf_check
-            nginx_conf_check=$(sudo nginx -c /etc/nginx/nginx.conf -t 2>&1)
+            nginx_conf_check=$(sudo nginx -c ${NGINX_DIR}/nginx.conf -t 2>&1)
             if [[ $? -eq 0 ]]; then
                 nginx_available=true
                 print_status "info" "检测到Nginx和插件，将使用nginx插件"
@@ -303,7 +305,7 @@ create_certificate() {
     if $success; then
         print_status "success" "SSL证书创建成功！"
         # 修复通配符域名的证书文件位置显示
-        local cert_dir=$(sudo certbot certificates 2>/dev/null | grep -A 1 "Certificate Name: ${domain//\*/\*}" | grep "Certificate Path:" | awk '{print $3}' | sed 's/cert.pem$//' || echo "/etc/letsencrypt/live/${domain//\*/\*}/")
+        local cert_dir=$(sudo certbot certificates 2>/dev/null | grep -A 1 "Certificate Name: ${domain//\*/\*}" | grep "Certificate Path:" | awk '{print $3}' | sed 's/cert.pem$//' || echo "${LETSENCRYPT_DIR}/live/${domain//\*/\*}/")
         print_status "info" "证书文件位置: $cert_dir"
         print_status "info" "请确保Nginx配置正确指向证书文件"
     else
@@ -377,8 +379,8 @@ uninstall_certificate() {
     # 显示证书信息
     print_status "info" "即将卸载的SSL证书："
     print_status "info" "  域名: $target_domain"
-    print_status "info" "  证书路径: /etc/letsencrypt/live/$target_domain/"
-    print_status "info" "  配置文件: /etc/letsencrypt/renewal/$target_domain.conf"
+    print_status "info" "  证书路径: ${LETSENCRYPT_DIR}/live/$target_domain/"
+    print_status "info" "  配置文件: ${LETSENCRYPT_DIR}/renewal/$target_domain.conf"
     echo ""
 
     # 警告信息
@@ -412,14 +414,14 @@ uninstall_certificate() {
         print_status "success" "SSL证书卸载成功！"
         print_status "info" "证书文件已从系统中删除"
         print_status "warning" "请记得手动更新Nginx配置文件，移除SSL相关配置"
-        print_status "info" "Nginx配置通常位于: /etc/nginx/sites-available/ 或 /etc/nginx/conf.d/"
+        print_status "info" "Nginx配置通常位于: ${NGINX_DIR}/sites-available/ 或 ${NGINX_DIR}/conf.d/"
     else
         # 备用方案：手动删除
         print_status "warning" "使用certbot delete失败，尝试手动删除..."
 
-        local cert_dir="/etc/letsencrypt/live/$target_domain"
-        local archive_dir="/etc/letsencrypt/archive/$target_domain"
-        local renewal_file="/etc/letsencrypt/renewal/$target_domain.conf"
+        local cert_dir="${LETSENCRYPT_DIR}/live/$target_domain"
+        local archive_dir="${LETSENCRYPT_DIR}/archive/$target_domain"
+        local renewal_file="${LETSENCRYPT_DIR}/renewal/$target_domain.conf"
 
         rm -rf "$cert_dir" 2>/dev/null || true
         rm -rf "$archive_dir" 2>/dev/null || true
@@ -444,9 +446,19 @@ renew_certificates() {
 
     local success=false
     if check_root; then
-        if certbot renew; then success=true; fi
+        if certbot renew; then
+            print_status "success" "证书续期成功！"
+        else
+            print_status "error" "证书续期失败"
+            return 1
+        fi
     elif command -v sudo &> /dev/null; then
-        if sudo certbot renew; then success=true; fi
+        if sudo certbot renew; then
+            print_status "success" "证书续期成功！"
+        else
+            print_status "error" "证书续期失败"
+            return 1
+        fi
     else
         print_status "warning" "需要sudo权限续期证书"
         print_status "info" "请运行: sudo $0 renew"
@@ -482,5 +494,5 @@ check_nginx() {
     # 显示nginx版本和配置文件位置
     echo ""
     print_status "info" "Nginx版本: $(nginx -v 2>&1 | cut -d' ' -f3)"
-    print_status "info" "主配置文件: $(nginx -t 2>&1 | grep 'configuration file' | awk '{print $5}' || echo '/etc/nginx/nginx.conf')"
+    print_status "info" "主配置文件: $(nginx -t 2>&1 | grep 'configuration file' | awk '{print $5}' || echo "${NGINX_DIR}/nginx.conf")"
 }

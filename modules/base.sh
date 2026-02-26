@@ -14,6 +14,10 @@ NC='\033[0m' # No Color
 VERSION="2.0.0"
 GITHUB_REPO="https://github.com/cookabc/certbot-manager"
 
+# 系统路径定义
+LETSENCRYPT_DIR="/etc/letsencrypt"
+NGINX_DIR="/etc/nginx"
+
 # 检查是否为root用户
 check_root() {
     if [[ $EUID -eq 0 ]]; then
@@ -101,7 +105,7 @@ detect_certbot_mode() {
             # 不使用sudo检查配置，避免权限问题
             # 因为实际运行时certbot会使用sudo
             local nginx_conf_check
-            nginx_conf_check=$(sudo nginx -c /etc/nginx/nginx.conf -t 2>&1)
+            nginx_conf_check=$(sudo nginx -c ${NGINX_DIR}/nginx.conf -t 2>&1)
             if [[ $? -eq 0 ]]; then
                 echo nginx
                 return 0

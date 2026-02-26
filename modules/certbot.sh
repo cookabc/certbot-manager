@@ -182,7 +182,7 @@ uninstall_certbot() {
     # 删除证书文件
     if $delete_certs && check_root; then
         print_status "info" "删除SSL证书文件..."
-        rm -rf /etc/letsencrypt 2>/dev/null || true
+        rm -rf ${LETSENCRYPT_DIR} 2>/dev/null || true
     fi
 
     # 移除自动续期配置
@@ -204,7 +204,7 @@ uninstall_certbot() {
         if $delete_certs; then
             print_status "info" "SSL证书已删除"
         else
-            print_status "info" "SSL证书文件保留在 /etc/letsencrypt/"
+            print_status "info" "SSL证书文件保留在 ${LETSENCRYPT_DIR}/"
         fi
     else
         print_status "error" "Certbot卸载失败，请手动清理"
