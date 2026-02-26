@@ -34,8 +34,9 @@ list_certificates_for_selection() {
     local domain
     while IFS= read -r line; do
         if [[ "$line" == *"Certificate Name:"* ]]; then
-            domain=$(echo "$line" | awk '{print $3}')
-            domains+=($domain)
+            domain=${line#*Certificate Name: }
+            domain=${domain%% *}
+            domains+=("$domain")
         fi
     done <<< "$cert_output"
 
@@ -74,9 +75,10 @@ list_certificates() {
         return 0
     fi
 
-    echo "$cert_output" | while IFS= read -r line; do
+    while IFS= read -r line; do
         if [[ "$line" == *"Certificate Name:"* ]]; then
-            domain=$(echo "$line" | awk '{print $3}')
+            domain=${line#*Certificate Name: }
+            domain=${domain%% *}
             echo ""
             print_status "info" "📋 证书域名: $domain"
         elif [[ "$line" == *"Expiry Date:"* ]]; then
@@ -89,7 +91,7 @@ list_certificates() {
             key_path=${line#*Private Key Path: }
             echo "   私钥路径: $key_path"
         fi
-    done
+    done <<< "$cert_output"
     echo ""
 }
 
