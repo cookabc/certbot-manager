@@ -239,16 +239,16 @@ create_certificate() {
     if [[ "$domain" == \*.* ]]; then
         if $dns_plugin_mode; then
             print_status "info" "使用 DNS 插件进行验证..."
-            local cmd="certbot certonly --non-interactive --agree-tos --email \"$email\" -d \"$domain\" --dns-${dns_plugin_name}"
+            local cmd=(certbot certonly --non-interactive --agree-tos --email "$email" -d "$domain" "--dns-${dns_plugin_name}")
             
             if [[ -n "$dns_credentials_file" ]]; then
-                cmd="$cmd --dns-${dns_plugin_name}-credentials \"$dns_credentials_file\""
+                cmd+=("--dns-${dns_plugin_name}-credentials" "$dns_credentials_file")
             fi
             
             if check_root; then
-                if eval "$cmd"; then success=true; fi
+                if "${cmd[@]}"; then success=true; fi
             elif command -v sudo &> /dev/null; then
-                if eval "sudo $cmd"; then success=true; fi
+                if sudo "${cmd[@]}"; then success=true; fi
             else
                 print_status "error" "需要sudo权限以配置证书"
                 return 1
@@ -442,17 +442,18 @@ renew_certificates() {
 
     print_status "info" "开始续期证书..."
 
+    local success=false
     if check_root; then
-        renew_cmd="certbot renew"
+        if certbot renew; then success=true; fi
     elif command -v sudo &> /dev/null; then
-        renew_cmd="sudo certbot renew"
+        if sudo certbot renew; then success=true; fi
     else
         print_status "warning" "需要sudo权限续期证书"
         print_status "info" "请运行: sudo $0 renew"
         return 1
     fi
 
-    if eval "$renew_cmd"; then
+    if $success; then
         print_status "success" "证书续期成功！"
     else
         print_status "error" "证书续期失败"
