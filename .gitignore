@@ -53,6 +53,9 @@ yarn-error.log*
 .env.local
 .env.*.local
 
+# 用户配置文件（包含邮箱、DNS凭证路径等敏感信息）
+config.conf
+
 # 证书和密钥（不要提交）
 *.pem
 *.key

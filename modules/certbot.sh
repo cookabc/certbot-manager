@@ -2,6 +2,10 @@
 
 # Certbot管理模块 - 处理Certbot的安装、卸载等操作
 
+# Source guard: 防止重复加载
+[[ -n "${_CERTBOT_SH_LOADED:-}" ]] && return 0
+_CERTBOT_SH_LOADED=1
+
 # 加载基础模块
 source "$MODULES_DIR/base.sh"
 
@@ -19,7 +23,7 @@ install_certbot() {
     print_status "info" "检测操作系统并安装certbot..."
     
     local install_method=""
-    if [[ -n "$CERTBOT_INSTALL_METHOD" && "$CERTBOT_INSTALL_METHOD" != "auto" ]]; then
+    if [[ -n "${CERTBOT_INSTALL_METHOD:-}" && "${CERTBOT_INSTALL_METHOD:-}" != "auto" ]]; then
         install_method="$CERTBOT_INSTALL_METHOD"
         print_status "info" "使用配置文件中的安装方式: $install_method"
     fi
@@ -182,7 +186,7 @@ uninstall_certbot() {
     # 删除证书文件
     if $delete_certs && check_root; then
         print_status "info" "删除SSL证书文件..."
-        rm -rf ${LETSENCRYPT_DIR} 2>/dev/null || true
+        rm -rf "${LETSENCRYPT_DIR}" 2>/dev/null || true
     fi
 
     # 移除自动续期配置

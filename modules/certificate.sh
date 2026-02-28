@@ -2,6 +2,10 @@
 
 # 证书管理模块 - 处理证书的创建、列出、续期和卸载等操作
 
+# Source guard: 防止重复加载
+[[ -n "${_CERTIFICATE_SH_LOADED:-}" ]] && return 0
+_CERTIFICATE_SH_LOADED=1
+
 # 加载基础模块和系统检查模块
 source "$MODULES_DIR/base.sh"
 source "$MODULES_DIR/system.sh"
@@ -135,8 +139,8 @@ create_certificate() {
 
     # 获取邮箱地址
     local email=""
-    if [[ -n "$CERTBOT_EMAIL" ]]; then
-        email="$CERTBOT_EMAIL"
+    if [[ -n "${CERTBOT_EMAIL:-}" ]]; then
+        email="${CERTBOT_EMAIL:-}"
         print_status "info" "使用配置文件中的邮箱: $email"
     else
         echo -n "请输入用于 Let's Encrypt 的邮箱地址: "
@@ -183,7 +187,7 @@ create_certificate() {
         if [[ "$mode" == "nginx" ]]; then
             # 检查nginx配置是否有效
             local nginx_conf_check
-            nginx_conf_check=$(sudo nginx -c ${NGINX_DIR}/nginx.conf -t 2>&1)
+            nginx_conf_check=$(sudo nginx -c "${NGINX_DIR}/nginx.conf" -t 2>&1)
             if [[ $? -eq 0 ]]; then
                 nginx_available=true
                 print_status "info" "检测到Nginx和插件，将使用nginx插件"
@@ -444,7 +448,6 @@ renew_certificates() {
 
     print_status "info" "开始续期证书..."
 
-    local success=false
     if check_root; then
         if certbot renew; then
             print_status "success" "证书续期成功！"
@@ -462,13 +465,6 @@ renew_certificates() {
     else
         print_status "warning" "需要sudo权限续期证书"
         print_status "info" "请运行: sudo $0 renew"
-        return 1
-    fi
-
-    if $success; then
-        print_status "success" "证书续期成功！"
-    else
-        print_status "error" "证书续期失败"
         return 1
     fi
 }

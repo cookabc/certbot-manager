@@ -2,6 +2,10 @@
 
 # 自动续期模块 - 处理证书自动续期的设置
 
+# Source guard: 防止重复加载
+[[ -n "${_RENEWAL_SH_LOADED:-}" ]] && return 0
+_RENEWAL_SH_LOADED=1
+
 # 加载基础模块和系统检查模块
 source "$MODULES_DIR/base.sh"
 source "$MODULES_DIR/system.sh"
@@ -22,8 +26,8 @@ setup_auto_renew() {
     fi
     
     local method=""
-    if [[ -n "$RENEWAL_METHOD" ]]; then
-        method="$RENEWAL_METHOD"
+    if [[ -n "${RENEWAL_METHOD:-}" ]]; then
+        method="${RENEWAL_METHOD:-}"
         print_status "info" "使用配置文件中的续期方式: $method"
     fi
 

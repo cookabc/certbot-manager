@@ -55,10 +55,10 @@ main() {
             uninstall_certbot
             ;;
         "create")
-            create_certificate "$2"
+            create_certificate "${2:-}"
             ;;
         "delete")
-            uninstall_certificate "$2"
+            uninstall_certificate "${2:-}"
             ;;
         "renew")
             renew_certificates

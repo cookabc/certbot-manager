@@ -2,6 +2,10 @@
 
 # 系统检查模块 - 检查系统状态和组件安装情况
 
+# Source guard: 防止重复加载
+[[ -n "${_SYSTEM_SH_LOADED:-}" ]] && return 0
+_SYSTEM_SH_LOADED=1
+
 # 加载基础模块
 source "$MODULES_DIR/base.sh"
 

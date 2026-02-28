@@ -2,6 +2,10 @@
 
 # 基础架构模块 - 提供通用工具函数和基础配置
 
+# Source guard: 防止重复加载
+[[ -n "${_BASE_SH_LOADED:-}" ]] && return 0
+_BASE_SH_LOADED=1
+
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -105,7 +109,7 @@ detect_certbot_mode() {
             # 不使用sudo检查配置，避免权限问题
             # 因为实际运行时certbot会使用sudo
             local nginx_conf_check
-            nginx_conf_check=$(sudo nginx -c ${NGINX_DIR}/nginx.conf -t 2>&1)
+            nginx_conf_check=$(sudo nginx -c "${NGINX_DIR}/nginx.conf" -t 2>&1)
             if [[ $? -eq 0 ]]; then
                 echo nginx
                 return 0
@@ -204,15 +208,22 @@ load_config() {
             
             # 移除行内注释
             value=$(echo "$value" | sed 's/[[:space:]]*#.*//')
-            # 移除首尾空格
-            key=$(echo "$key" | xargs)
-            value=$(echo "$value" | xargs)
+            # 移除首尾空格 (使用 sed 替代 xargs 避免引号/反斜杠被解析)
+            key=$(echo "$key" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            value=$(echo "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
             
             if [[ -n $current_section && -n $key ]]; then
                 # 构造变量名: SECTION_KEY (大写)
                 local var_name=$(echo "${current_section}_${key}" | tr '[:lower:]' '[:upper:]')
-                # 导出环境变量
-                export "$var_name"="$value"
+                # 安全检查: 只允许已知前缀的变量名，防止任意环境变量注入
+                case "$var_name" in
+                    CERTBOT_*|RENEWAL_*|NGINX_*|LOGGING_*|DNS_*)
+                        export "$var_name"="$value"
+                        ;;
+                    *)
+                        # 忽略未知配置项，避免注入风险
+                        ;;
+                esac
             fi
         done < "$config_file"
     fi
