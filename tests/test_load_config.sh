@@ -1,37 +1,37 @@
 #!/bin/bash
 
-# 加载基础模块和测试助手
+# Load base module and test helper
 source modules/base.sh
 source tests/test_helper.sh
 
-echo "🚀 开始测试 load_config 函数..."
+echo "🚀 Starting load_config function tests..."
 
-# 测试用例 1: 基本加载
+# Test case 1: Basic loading
 test_basic_loading() {
     local config_content="[certbot]
 email=admin@example.com
 domains=example.com"
     local config_file=$(setup_test_config "$config_content")
 
-    # 确保变量未设置
+    # Ensure variables are unset
     unset CERTBOT_EMAIL
     unset CERTBOT_DOMAINS
 
     load_config "$config_file"
 
-    assert_equals "admin@example.com" "$CERTBOT_EMAIL" "应该加载 [certbot] section 的 email"
-    assert_equals "example.com" "$CERTBOT_DOMAINS" "应该加载 [certbot] section 的 domains"
+    assert_equals "admin@example.com" "$CERTBOT_EMAIL" "Should load email from [certbot] section"
+    assert_equals "example.com" "$CERTBOT_DOMAINS" "Should load domains from [certbot] section"
 
     teardown_test_config "$config_file"
     unset CERTBOT_EMAIL
     unset CERTBOT_DOMAINS
 }
 
-# 测试用例 2: 注释和空行
+# Test case 2: Comments and empty lines
 test_comments_and_empty_lines() {
     local config_content="
 [nginx]
-# 这是一个注释
+# This is a comment
 config_path=/etc/nginx/conf.d/
 
 [renewal]
@@ -44,19 +44,19 @@ method=systemd
 
     load_config "$config_file"
 
-    assert_equals "/etc/nginx/conf.d/" "$NGINX_CONFIG_PATH" "应该忽略注释并加载正确的值"
-    assert_equals "systemd" "$RENEWAL_METHOD" "应该跨越空行加载值"
+    assert_equals "/etc/nginx/conf.d/" "$NGINX_CONFIG_PATH" "Should ignore comments and load correct value"
+    assert_equals "systemd" "$RENEWAL_METHOD" "Should load value across empty lines"
 
     teardown_test_config "$config_file"
     unset NGINX_CONFIG_PATH
     unset RENEWAL_METHOD
 }
 
-# 测试用例 3: 行内注释和空格
+# Test case 3: Inline comments and whitespace
 test_inline_comments_and_whitespace() {
     local config_content="
 [logging]
-level = info # 这是一行内注释
+level = info # This is an inline comment
 file =  /var/log/certbot.log
 "
     local config_file=$(setup_test_config "$config_content")
@@ -66,21 +66,21 @@ file =  /var/log/certbot.log
 
     load_config "$config_file"
 
-    assert_equals "info" "$LOGGING_LEVEL" "应该移除行内注释并修剪空格"
-    assert_equals "/var/log/certbot.log" "$LOGGING_FILE" "应该修剪首尾空格"
+    assert_equals "info" "$LOGGING_LEVEL" "Should remove inline comments and trim whitespace"
+    assert_equals "/var/log/certbot.log" "$LOGGING_FILE" "Should trim leading/trailing whitespace"
 
     teardown_test_config "$config_file"
     unset LOGGING_LEVEL
     unset LOGGING_FILE
 }
 
-# 测试用例 4: 边界情况
+# Test case 4: Edge cases
 test_edge_cases() {
-    # 1. 不存在的文件
+    # 1. Non-existent file
     load_config "non_existent.conf"
-    assert_equals "" "${NON_EXISTENT_VAR:-}" "不应该加载不存在的文件"
+    assert_equals "" "${NON_EXISTENT_VAR:-}" "Should not load non-existent file"
 
-    # 2. Section 之外的键
+    # 2. Keys outside of section
     local config_content="
 global_key=value
 [dns]
@@ -88,26 +88,26 @@ local_key=value
 "
     local config_file=$(setup_test_config "$config_content")
 
-    # 清除可能存在的变量
+    # Clear possibly existing variables
     unset GLOBAL_KEY
     unset DNS_LOCAL_KEY
 
     load_config "$config_file"
 
-    assert_equals "" "${GLOBAL_KEY:-}" "应该忽略 section 之外的键"
-    assert_equals "value" "$DNS_LOCAL_KEY" "应该加载 section 之内的键"
+    assert_equals "" "${GLOBAL_KEY:-}" "Should ignore keys outside of section"
+    assert_equals "value" "$DNS_LOCAL_KEY" "Should load keys inside section"
 
     teardown_test_config "$config_file"
     unset GLOBAL_KEY
     unset DNS_LOCAL_KEY
 }
 
-# 运行测试
+# Run tests
 test_basic_loading
 test_comments_and_empty_lines
 test_inline_comments_and_whitespace
 test_edge_cases
 
-# 总结并退出
+# Summarize and exit
 summarize_tests
 exit $?

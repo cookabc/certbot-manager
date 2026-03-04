@@ -1,21 +1,21 @@
 #!/bin/bash
 
-# 证书管理模块 - 处理证书的创建、列出、续期和卸载等操作
+# Certificate module - Handles certificate creation, listing, renewal, and deletion
 
-# Source guard: 防止重复加载
+# Source guard: Prevent duplicate loading
 [[ -n "${_CERTIFICATE_SH_LOADED:-}" ]] && return 0
 _CERTIFICATE_SH_LOADED=1
 
-# 加载基础模块和系统检查模块
+# Load base module and system check module
 source "$MODULES_DIR/base.sh"
 source "$MODULES_DIR/system.sh"
 
-# 列出所有证书供选择
+# List all certificates for selection
 list_certificates_for_selection() {
-    print_status "info" "获取已安装的证书列表..." >&2
+    print_status "info" "Fetching installed certificate list..." >&2
 
     if ! command -v certbot &> /dev/null; then
-        print_status "error" "Certbot未安装" >&2
+        print_status "error" "Certbot is not installed" >&2
         return 1
     fi
 
@@ -25,12 +25,12 @@ list_certificates_for_selection() {
     elif command -v sudo &> /dev/null; then
         cert_output=$(sudo certbot certificates 2>/dev/null)
     else
-        print_status "warning" "需要sudo权限查看证书列表" >&2
-        print_status "info" "请运行: sudo $0 list" >&2
+        print_status "warning" "Sudo privileges required to view certificate list" >&2
+        print_status "info" "Please run: sudo $0 list" >&2
         return 1
     fi
     if [[ -z "$cert_output" || "$cert_output" == *"No certificates found"* ]]; then
-        print_status "info" "暂无已安装的证书" >&2
+        print_status "info" "No certificates installed" >&2
         return 1
     fi
 
@@ -45,22 +45,22 @@ list_certificates_for_selection() {
     done <<< "$cert_output"
 
     if [[ ${#domains[@]} -eq 0 ]]; then
-        print_status "info" "暂无已安装的证书" >&2
+        print_status "info" "No certificates installed" >&2
         return 1
     fi
 
-    # 仅输出纯域名列表到stdout
+    # Output only plain domain list to stdout
     printf '%s\n' "${domains[@]}"
     return 0
 }
 
-# 列出已安装证书
+# List installed certificates
 list_certificates() {
-    print_status "title" "证书列表"
+    print_status "title" "Certificate List"
     echo "=================================================="
 
     if ! command -v certbot &> /dev/null; then
-        print_status "error" "Certbot未安装，无法列出证书"
+        print_status "error" "Certbot is not installed, cannot list certificates"
         return 1
     fi
 
@@ -70,12 +70,12 @@ list_certificates() {
     elif command -v sudo &> /dev/null; then
         cert_output=$(sudo certbot certificates 2>/dev/null)
     else
-        print_status "warning" "需要sudo权限查看证书列表"
-        print_status "info" "请运行: sudo $0 list"
+        print_status "warning" "Sudo privileges required to view certificate list"
+        print_status "info" "Please run: sudo $0 list"
         return 1
     fi
     if [[ -z "$cert_output" || "$cert_output" == *"No certificates found"* ]]; then
-        print_status "info" "暂无已安装的证书"
+        print_status "info" "No certificates installed"
         return 0
     fi
 
@@ -84,39 +84,39 @@ list_certificates() {
             domain=${line#*Certificate Name: }
             domain=${domain%% *}
             echo ""
-            print_status "info" "📋 证书域名: $domain"
+            print_status "info" "📋 Certificate domain: $domain"
         elif [[ "$line" == *"Expiry Date:"* ]]; then
             expiry=${line#*Expiry Date: }
-            echo "   到期时间: $expiry"
+            echo "   Expiry date: $expiry"
         elif [[ "$line" == *"Certificate Path:"* ]]; then
             cert_path=${line#*Certificate Path: }
-            echo "   证书路径: $cert_path"
+            echo "   Certificate path: $cert_path"
         elif [[ "$line" == *"Private Key Path:"* ]]; then
             key_path=${line#*Private Key Path: }
-            echo "   私钥路径: $key_path"
+            echo "   Private key path: $key_path"
         fi
     done <<< "$cert_output"
     echo ""
 }
 
-# 创建SSL证书
+# Create SSL certificate
 create_certificate() {
     local domain=$1
 
-    print_status "title" "创建SSL证书"
+    print_status "title" "Create SSL Certificate"
     echo "=================================================="
 
     if ! command -v certbot &> /dev/null; then
-        print_status "error" "Certbot未安装，请先运行: $0 install"
+        print_status "error" "Certbot is not installed, please run first: $0 install"
         return 2
     fi
 
-    # 如果没有提供域名，则交互式获取
+    # If no domain provided, get it interactively
     if [[ -z "$domain" ]]; then
-        echo -n "请输入要签发证书的域名: "
+        echo -n "Enter the domain for certificate issuance: "
         read -r domain
         if [[ -z "$domain" ]]; then
-            print_status "error" "域名不能为空"
+            print_status "error" "Domain cannot be empty"
             return 2
         fi
     fi
@@ -124,37 +124,37 @@ create_certificate() {
     if domain=$(convert_to_punycode "$domain"); then
         :
     else
-        print_status "error" "域名不符合ASCII格式，请输入英文域名"
+        print_status "error" "Domain is not in ASCII format, please enter an ASCII domain"
         return 2
     fi
 
-    # 验证域名格式（更严格的校验）
-    # 支持通配符 *.example.com
+    # Validate domain format (stricter validation)
+    # Support wildcard *.example.com
     if [[ ! "$domain" =~ ^(\*\.)?([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$ ]]; then
-        # 排除 localhost
+        # Exclude localhost
         if [[ "$domain" != "localhost" ]]; then
-             print_status "warning" "域名格式可能不标准，建议检查: $domain"
+             print_status "warning" "Domain format may be non-standard, please verify: $domain"
         fi
     fi
 
-    # 获取邮箱地址
+    # Get email address
     local email=""
     if [[ -n "${CERTBOT_EMAIL:-}" ]]; then
         email="${CERTBOT_EMAIL:-}"
-        print_status "info" "使用配置文件中的邮箱: $email"
+        print_status "info" "Using email from config: $email"
     else
-        echo -n "请输入用于 Let's Encrypt 的邮箱地址: "
+        echo -n "Enter the email address for Let's Encrypt: "
         read -r email
     fi
     
     if [[ -z "$email" ]]; then
-        print_status "error" "邮箱地址不能为空"
+        print_status "error" "Email address cannot be empty"
         return 2
     fi
 
-    # 验证邮箱格式
+    # Validate email format
     if [[ ! "$email" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
-        print_status "error" "邮箱格式不正确"
+        print_status "error" "Invalid email format"
         return 2
     fi
 
@@ -165,86 +165,86 @@ create_certificate() {
     local dns_plugin_name=""
     local dns_credentials_file=""
     
-    # 检查是否为通配符域名
+    # Check if wildcard domain
     if [[ "$domain" == \*.* ]]; then
-        print_status "warning" "检测到通配符域名，需要使用DNS验证方式"
+        print_status "warning" "Wildcard domain detected, DNS validation required"
         
-        # 检查是否配置了 DNS 插件
+        # Check if DNS plugin is configured
         if [[ -n "${CERTBOT_DNS_PLUGIN:-}" ]]; then
              dns_plugin_name="$CERTBOT_DNS_PLUGIN"
              dns_credentials_file="${CERTBOT_DNS_CREDENTIALS:-}"
              dns_plugin_mode=true
              mode="dns-plugin"
-             print_status "info" "使用配置的 DNS 插件: $dns_plugin_name"
+             print_status "info" "Using configured DNS plugin: $dns_plugin_name"
         else
-             print_status "warning" "Nginx插件不支持DNS验证，将使用manual模式"
+             print_status "warning" "Nginx plugin does not support DNS validation, will use manual mode"
              mode="manual"
         fi
         
         nginx_available=false
     else
-        # 再次检查Nginx配置，确保模式选择正确
+        # Recheck Nginx config to ensure correct mode selection
         if [[ "$mode" == "nginx" ]]; then
-            # 检查nginx配置是否有效
+            # Check if nginx config is valid
             local nginx_conf_check
             nginx_conf_check=$(sudo nginx -c "${NGINX_DIR}/nginx.conf" -t 2>&1)
             if [[ $? -eq 0 ]]; then
                 nginx_available=true
-                print_status "info" "检测到Nginx和插件，将使用nginx插件"
+                print_status "info" "Nginx and plugin detected, will use nginx plugin"
             else
-                print_status "warning" "Nginx配置无效，强制切换到standalone模式"
+                print_status "warning" "Nginx configuration invalid, forcing standalone mode"
                 mode="standalone"
             fi
         else
             if command -v nginx &> /dev/null; then
-                print_status "info" "检测到Nginx但未安装插件或配置无效，使用standalone模式"
+                print_status "info" "Nginx detected but plugin not installed or config invalid, using standalone mode"
             else
-                print_status "info" "未检测到Nginx，将使用standalone模式（需要停止Web服务器）"
+                print_status "info" "Nginx not detected, will use standalone mode (requires stopping web server)"
             fi
         fi
     fi
 
-    # 确认操作
+    # Confirm operation
     echo ""
-    print_status "title" "证书信息确认"
+    print_status "title" "Certificate Information Confirmation"
     echo "=================================================="
-    echo "📍 域名: $domain"
-    echo "📧 邮箱: $email"
-    # 正确显示当前使用的模式
+    echo "📍 Domain: $domain"
+    echo "📧 Email: $email"
+    # Display the current mode correctly
     local mode_display
     if $dns_plugin_mode; then
-        mode_display="DNS插件模式 ($dns_plugin_name)"
+        mode_display="DNS Plugin Mode ($dns_plugin_name)"
     elif [[ "$domain" == \*.* ]]; then
-        mode_display="Manual模式(DNS验证)"
+        mode_display="Manual Mode (DNS Validation)"
     elif $nginx_available; then
-        mode_display="Nginx插件"
+        mode_display="Nginx Plugin"
     else
-        mode_display="Standalone模式"
+        mode_display="Standalone Mode"
     fi
-    echo "🔧 模式: $mode_display"
+    echo "🔧 Mode: $mode_display"
     echo "=================================================="
     echo ""
 
-    confirm_action "确认要创建SSL证书吗？"
+    confirm_action "Confirm creating SSL certificate?"
     if [[ $? -ne 0 ]]; then
-        print_status "info" "操作已取消"
+        print_status "info" "Operation cancelled"
         return 2
     fi
 
-    print_status "info" "开始为域名 $domain 创建SSL证书..."
+    print_status "info" "Starting SSL certificate creation for domain $domain..."
 
     local success=false
     local nginx_was_running=false
     
-    # 检查nginx是否正在运行
+    # Check if nginx is running
     if check_nginx_status; then
         nginx_was_running=true
     fi
     
-    # 处理通配符域名
+    # Handle wildcard domains
     if [[ "$domain" == \*.* ]]; then
         if $dns_plugin_mode; then
-            print_status "info" "使用 DNS 插件进行验证..."
+            print_status "info" "Verifying with DNS plugin..."
             local cmd=(certbot certonly --non-interactive --agree-tos --email "$email" -d "$domain" "--dns-${dns_plugin_name}")
             
             if [[ -n "$dns_credentials_file" ]]; then
@@ -256,37 +256,37 @@ create_certificate() {
             elif command -v sudo &> /dev/null; then
                 if sudo "${cmd[@]}"; then success=true; fi
             else
-                print_status "error" "需要sudo权限以配置证书"
+                print_status "error" "Sudo privileges required to configure certificate"
                 return 1
             fi
         else
-            print_status "info" "通配符域名需要DNS验证，将使用manual模式"
-            print_status "info" "系统将提示您添加DNS记录，请准备好DNS管理界面"
+            print_status "info" "Wildcard domain requires DNS validation, will use manual mode"
+            print_status "info" "The system will prompt you to add DNS records, please have your DNS management panel ready"
             
-            # 通配符域名需要使用DNS验证，使用manual模式
+            # Wildcard domains require DNS validation, using manual mode
             if check_root; then
                 if certbot certonly --manual --preferred-challenges dns --agree-tos --email "$email" -d "$domain"; then success=true; fi
             elif command -v sudo &> /dev/null; then
                 if sudo certbot certonly --manual --preferred-challenges dns --agree-tos --email "$email" -d "$domain"; then success=true; fi
             else
-                print_status "error" "需要sudo权限以配置证书"
+                print_status "error" "Sudo privileges required to configure certificate"
                 return 1
             fi
         fi
     elif $nginx_available; then
-        # 使用nginx插件模式
+        # Use nginx plugin mode
         if check_root; then
             if certbot --nginx --non-interactive --agree-tos --email "$email" -d "$domain"; then success=true; fi
         elif command -v sudo &> /dev/null; then
             if sudo certbot --nginx --non-interactive --agree-tos --email "$email" -d "$domain"; then success=true; fi
         else
-            print_status "error" "需要sudo权限以配置证书"
+            print_status "error" "Sudo privileges required to configure certificate"
             return 1
         fi
     else
-        # 使用standalone模式，需要停止nginx服务
+        # Use standalone mode, need to stop nginx service
         if $nginx_was_running; then
-            print_status "info" "停止nginx服务以使用standalone模式..."
+            print_status "info" "Stopping nginx service for standalone mode..."
             stop_nginx
         fi
         
@@ -295,46 +295,46 @@ create_certificate() {
         elif command -v sudo &> /dev/null; then
             if sudo certbot certonly --standalone --non-interactive --agree-tos --email "$email" -d "$domain"; then success=true; fi
         else
-            print_status "error" "需要sudo权限以配置证书"
+            print_status "error" "Sudo privileges required to configure certificate"
             return 1
         fi
         
-        # 如果nginx之前在运行，重新启动它
+        # If nginx was running before, restart it
         if $nginx_was_running; then
-            print_status "info" "重新启动nginx服务..."
+            print_status "info" "Restarting nginx service..."
             start_nginx
         fi
     fi
 
     if $success; then
-        print_status "success" "SSL证书创建成功！"
-        # 修复通配符域名的证书文件位置显示
+        print_status "success" "SSL certificate created successfully!"
+        # Fix certificate file location display for wildcard domains
         local cert_dir=$(sudo certbot certificates 2>/dev/null | grep -A 1 "Certificate Name: ${domain//\*/\*}" | grep "Certificate Path:" | awk '{print $3}' | sed 's/cert.pem$//' || echo "${LETSENCRYPT_DIR}/live/${domain//\*/\*}/")
-        print_status "info" "证书文件位置: $cert_dir"
-        print_status "info" "请确保Nginx配置正确指向证书文件"
+        print_status "info" "Certificate file location: $cert_dir"
+        print_status "info" "Please ensure Nginx configuration points to the certificate files correctly"
     else
-        print_status "error" "SSL证书创建失败"
-        print_status "info" "请检查以下问题："
-        print_status "info" "  • 域名是否正确解析到此服务器"
-        print_status "info" "  • 防火墙是否开放80和443端口"
-        print_status "info" "  • 如果使用standalone模式，请确保80端口未被占用"
+        print_status "error" "SSL certificate creation failed"
+        print_status "info" "Please check the following:"
+        print_status "info" "  • Is the domain correctly resolved to this server"
+        print_status "info" "  • Are ports 80 and 443 open in the firewall"
+        print_status "info" "  • If using standalone mode, ensure port 80 is not in use"
         return 1
     fi
 }
 
-# 卸载SSL证书
+# Uninstall SSL certificate
 uninstall_certificate() {
     local domain=$1
 
-    print_status "title" "卸载SSL证书"
+    print_status "title" "Uninstall SSL Certificate"
     echo "=================================================="
 
     if [[ -n "$domain" ]]; then
-        # 命令行模式，直接使用指定域名
+        # Command-line mode, use specified domain directly
         local target_domain="$domain"
     else
-        # 交互式模式，让用户选择证书
-        print_status "info" "选择要卸载的SSL证书："
+        # Interactive mode, let user select certificate
+        print_status "info" "Select SSL certificate to uninstall:"
         local domains=()
         readarray -t domains < <(list_certificates_for_selection)
 
@@ -342,30 +342,30 @@ uninstall_certificate() {
             return 3
         fi
 
-        print_status "info" "已安装的证书："
+        print_status "info" "Installed certificates:"
         for i in "${!domains[@]}"; do
             echo "  $((i+1))) ${domains[i]}"
         done
 
-        echo -n "请输入要卸载的域名或编号: "
+        echo -n "Enter the domain or number to uninstall: "
         read -r target_domain
         if [[ -z "$target_domain" ]]; then
-            print_status "error" "输入不能为空"
+            print_status "error" "Input cannot be empty"
             return 2
         fi
 
-        # 如果输入的是编号，转换为域名
+        # If input is a number, convert to domain
         if [[ "$target_domain" =~ ^[0-9]+$ ]]; then
             local index=$((target_domain - 1))
             if [[ $index -ge 0 && $index -lt ${#domains[@]} ]]; then
                 target_domain="${domains[$index]}"
             else
-                print_status "error" "无效的编号"
+                print_status "error" "Invalid number"
                 return 2
             fi
         fi
 
-        # 验证域名是否在列表中
+        # Verify domain is in the list
         local found=false
         for d in "${domains[@]}"; do
             if [[ "$d" == "$target_domain" ]]; then
@@ -375,53 +375,53 @@ uninstall_certificate() {
         done
 
         if ! $found; then
-            print_status "error" "域名 $target_domain 没有对应的SSL证书"
+            print_status "error" "Domain $target_domain has no corresponding SSL certificate"
             return 2
         fi
     fi
 
-    # 显示证书信息
-    print_status "info" "即将卸载的SSL证书："
-    print_status "info" "  域名: $target_domain"
-    print_status "info" "  证书路径: ${LETSENCRYPT_DIR}/live/$target_domain/"
-    print_status "info" "  配置文件: ${LETSENCRYPT_DIR}/renewal/$target_domain.conf"
+    # Show certificate info
+    print_status "info" "SSL certificate to be uninstalled:"
+    print_status "info" "  Domain: $target_domain"
+    print_status "info" "  Certificate path: ${LETSENCRYPT_DIR}/live/$target_domain/"
+    print_status "info" "  Config file: ${LETSENCRYPT_DIR}/renewal/$target_domain.conf"
     echo ""
 
-    # 警告信息
-    print_status "warning" "⚠️  重要提醒："
-    print_status "warning" "  卸载SSL证书将会："
-    print_status "warning" "  • 删除证书文件"
-    print_status "warning" "  • 删除私钥文件"
-    print_status "warning" "  • 移除续期配置"
-    print_status "warning" "  • 需要手动更新Nginx配置"
-    print_status "warning" "  这将导致HTTPS网站无法访问！"
+    # Warning information
+    print_status "warning" "⚠️  Important notice:"
+    print_status "warning" "  Uninstalling SSL certificate will:"
+    print_status "warning" "  • Delete certificate files"
+    print_status "warning" "  • Delete private key files"
+    print_status "warning" "  • Remove renewal configuration"
+    print_status "warning" "  • Nginx configuration needs to be updated manually"
+    print_status "warning" "  This will cause HTTPS websites to become inaccessible!"
     echo ""
 
-    # 确认操作
-    confirm_action "确认要卸载域名 $target_domain 的SSL证书吗？"
+    # Confirm operation
+    confirm_action "Confirm uninstalling SSL certificate for domain $target_domain?"
     if [[ $? -ne 0 ]]; then
-        print_status "info" "操作已取消"
+        print_status "info" "Operation cancelled"
         return 2
     fi
 
-    print_status "info" "开始卸载SSL证书..."
+    print_status "info" "Starting SSL certificate uninstallation..."
 
     if ! check_root; then
-        print_status "error" "需要root权限进行卸载"
-        print_status "info" "请运行: sudo $0 delete $target_domain"
+        print_status "error" "Root privileges required for uninstallation"
+        print_status "info" "Please run: sudo $0 delete $target_domain"
         return 2
     fi
 
-    # 删除证书文件
-    print_status "info" "删除证书文件..."
+    # Delete certificate files
+    print_status "info" "Deleting certificate files..."
     if certbot delete --cert-name "$target_domain" 2>/dev/null; then
-        print_status "success" "SSL证书卸载成功！"
-        print_status "info" "证书文件已从系统中删除"
-        print_status "warning" "请记得手动更新Nginx配置文件，移除SSL相关配置"
-        print_status "info" "Nginx配置通常位于: ${NGINX_DIR}/sites-available/ 或 ${NGINX_DIR}/conf.d/"
+        print_status "success" "SSL certificate uninstalled successfully!"
+        print_status "info" "Certificate files have been removed from the system"
+        print_status "warning" "Remember to manually update Nginx configuration files and remove SSL-related settings"
+        print_status "info" "Nginx config is usually located at: ${NGINX_DIR}/sites-available/ or ${NGINX_DIR}/conf.d/"
     else
-        # 备用方案：手动删除
-        print_status "warning" "使用certbot delete失败，尝试手动删除..."
+        # Fallback: manual deletion
+        print_status "warning" "certbot delete failed, attempting manual deletion..."
 
         local cert_dir="${LETSENCRYPT_DIR}/live/$target_domain"
         local archive_dir="${LETSENCRYPT_DIR}/archive/$target_domain"
@@ -431,64 +431,64 @@ uninstall_certificate() {
         rm -rf "$archive_dir" 2>/dev/null || true
         rm -f "$renewal_file" 2>/dev/null || true
 
-        print_status "success" "SSL证书手动删除完成"
-        print_status "warning" "请记得手动更新Nginx配置"
+        print_status "success" "SSL certificate manually deleted"
+        print_status "warning" "Remember to manually update Nginx configuration"
     fi
 }
 
-# 手动续期证书
+# Manually renew certificates
 renew_certificates() {
-    print_status "title" "续期证书"
+    print_status "title" "Renew Certificates"
     echo "=================================================="
 
     if ! command -v certbot &> /dev/null; then
-        print_status "error" "Certbot未安装"
+        print_status "error" "Certbot is not installed"
         return 1
     fi
 
-    print_status "info" "开始续期证书..."
+    print_status "info" "Starting certificate renewal..."
 
     if check_root; then
         if certbot renew; then
-            print_status "success" "证书续期成功！"
+            print_status "success" "Certificate renewal successful!"
         else
-            print_status "error" "证书续期失败"
+            print_status "error" "Certificate renewal failed"
             return 1
         fi
     elif command -v sudo &> /dev/null; then
         if sudo certbot renew; then
-            print_status "success" "证书续期成功！"
+            print_status "success" "Certificate renewal successful!"
         else
-            print_status "error" "证书续期失败"
+            print_status "error" "Certificate renewal failed"
             return 1
         fi
     else
-        print_status "warning" "需要sudo权限续期证书"
-        print_status "info" "请运行: sudo $0 renew"
+        print_status "warning" "Sudo privileges required to renew certificates"
+        print_status "info" "Please run: sudo $0 renew"
         return 1
     fi
 }
 
-# 检查nginx配置
+# Check nginx configuration
 check_nginx() {
-    print_status "title" "检查Nginx配置"
+    print_status "title" "Check Nginx Configuration"
     echo "=================================================="
 
     if ! command -v nginx &> /dev/null; then
-        print_status "error" "Nginx未安装"
+        print_status "error" "Nginx is not installed"
         return 1
     fi
 
-    print_status "info" "检查Nginx配置语法..."
+    print_status "info" "Checking Nginx configuration syntax..."
     if nginx -t; then
-        print_status "success" "Nginx配置语法正确"
+        print_status "success" "Nginx configuration syntax is correct"
     else
-        print_status "error" "Nginx配置有语法错误"
+        print_status "error" "Nginx configuration has syntax errors"
         return 1
     fi
 
-    # 显示nginx版本和配置文件位置
+    # Show nginx version and config file location
     echo ""
-    print_status "info" "Nginx版本: $(nginx -v 2>&1 | cut -d' ' -f3)"
-    print_status "info" "主配置文件: $(nginx -t 2>&1 | grep 'configuration file' | awk '{print $5}' || echo "${NGINX_DIR}/nginx.conf")"
+    print_status "info" "Nginx version: $(nginx -v 2>&1 | cut -d' ' -f3)"
+    print_status "info" "Main config file: $(nginx -t 2>&1 | grep 'configuration file' | awk '{print $5}' || echo "${NGINX_DIR}/nginx.conf")"
 }

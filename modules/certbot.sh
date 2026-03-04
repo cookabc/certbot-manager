@@ -1,80 +1,80 @@
 #!/bin/bash
 
-# Certbot管理模块 - 处理Certbot的安装、卸载等操作
+# Certbot module - Handles Certbot installation, uninstallation, etc.
 
-# Source guard: 防止重复加载
+# Source guard: Prevent duplicate loading
 [[ -n "${_CERTBOT_SH_LOADED:-}" ]] && return 0
 _CERTBOT_SH_LOADED=1
 
-# 加载基础模块
+# Load base module
 source "$MODULES_DIR/base.sh"
 
-# 安装certbot
+# Install certbot
 install_certbot() {
-    print_status "title" "安装Certbot"
+    print_status "title" "Install Certbot"
     echo "=================================================="
 
     if command -v certbot &> /dev/null; then
-        print_status "success" "Certbot已安装"
+        print_status "success" "Certbot is already installed"
         certbot --version
         return 0
     fi
 
-    print_status "info" "检测操作系统并安装certbot..."
+    print_status "info" "Detecting OS and installing certbot..."
     
     local install_method=""
     if [[ -n "${CERTBOT_INSTALL_METHOD:-}" && "${CERTBOT_INSTALL_METHOD:-}" != "auto" ]]; then
         install_method="$CERTBOT_INSTALL_METHOD"
-        print_status "info" "使用配置文件中的安装方式: $install_method"
+        print_status "info" "Using installation method from config: $install_method"
     fi
 
     if [[ -z "$install_method" ]]; then
         if [[ -f /etc/debian_version ]]; then
-        print_status "info" "检测到Debian/Ubuntu系统"
+        print_status "info" "Detected Debian/Ubuntu system"
         if command -v snap &> /dev/null; then
             install_method="snap"
         else
             install_method="apt"
         fi
         if ! check_root; then
-            print_status "warning" "需要root权限安装"
-            print_status "info" "请运行: sudo $0 install"
+            print_status "warning" "Root privileges required for installation"
+            print_status "info" "Please run: sudo $0 install"
             return 2
         fi
     elif [[ -f /etc/redhat-release ]]; then
         # CentOS/RHEL
-        print_status "info" "检测到CentOS/RHEL系统"
+        print_status "info" "Detected CentOS/RHEL system"
         install_method="yum"
         if ! check_root; then
-            print_status "warning" "需要root权限安装"
-            print_status "info" "请运行: sudo $0 install"
+            print_status "warning" "Root privileges required for installation"
+            print_status "info" "Please run: sudo $0 install"
             return 2
         fi
     elif command -v brew &> /dev/null; then
         # macOS
-        print_status "info" "检测到macOS系统，使用brew安装"
+        print_status "info" "Detected macOS, installing with brew"
         install_method="brew"
     else
-        print_status "error" "不支持的操作系统"
-        print_status "info" "请手动安装certbot: https://certbot.eff.org/"
+        print_status "error" "Unsupported operating system"
+        print_status "info" "Please install certbot manually: https://certbot.eff.org/"
         return 2
     fi
     fi
 
-    # 确认安装
+    # Confirm installation
     echo ""
-    print_status "info" "即将安装Certbot："
-    print_status "info" "  安装方式: $install_method"
-    print_status "info" "  系统类型: $([ "$install_method" = "apt" ] && echo "Debian/Ubuntu" || [ "$install_method" = "yum" ] && echo "CentOS/RHEL" || echo "macOS")"
+    print_status "info" "About to install Certbot:"
+    print_status "info" "  Method: $install_method"
+    print_status "info" "  System type: $([ "$install_method" = "apt" ] && echo "Debian/Ubuntu" || [ "$install_method" = "yum" ] && echo "CentOS/RHEL" || echo "macOS")"
     echo ""
 
-    confirm_action "确认要安装Certbot吗？"
+    confirm_action "Confirm installing Certbot?"
     if [[ $? -ne 0 ]]; then
-        print_status "info" "操作已取消"
+        print_status "info" "Operation cancelled"
         return 2
     fi
 
-    print_status "info" "开始安装Certbot..."
+    print_status "info" "Starting Certbot installation..."
 
     case "$install_method" in
         "apt")
@@ -92,126 +92,126 @@ install_certbot() {
     esac
 
     if command -v certbot &> /dev/null; then
-        print_status "success" "Certbot安装成功"
+        print_status "success" "Certbot installed successfully"
         certbot --version
-        print_status "info" "现在可以创建SSL证书了！"
+        print_status "info" "You can now create SSL certificates!"
     else
-        print_status "error" "Certbot安装失败"
-        print_status "info" "请检查网络连接和包管理器配置"
+        print_status "error" "Certbot installation failed"
+        print_status "info" "Please check network connection and package manager configuration"
         return 1
     fi
 }
 
-# 卸载certbot
+# Uninstall certbot
 uninstall_certbot() {
-    print_status "title" "卸载Certbot"
+    print_status "title" "Uninstall Certbot"
     echo "=================================================="
 
     if ! command -v certbot &> /dev/null; then
-        print_status "info" "Certbot未安装，无需卸载"
+        print_status "info" "Certbot is not installed, no need to uninstall"
         return 2
     fi
 
-    # 获取certbot版本信息
+    # Get certbot version info
     local certbot_version
-    certbot_version=$(certbot --version 2>/dev/null || echo "未知版本")
-    print_status "info" "当前Certbot版本: $certbot_version"
+    certbot_version=$(certbot --version 2>/dev/null || echo "unknown version")
+    print_status "info" "Current Certbot version: $certbot_version"
 
-    # 警告用户
+    # Warn user
     echo ""
-    print_status "warning" "⚠️  重要提醒："
-    print_status "warning" "  卸载Certbot将会："
-    print_status "warning" "  • 删除certbot程序文件"
-    print_status "warning" "  • 删除所有已安装的SSL证书（可选）"
-    print_status "warning" "  • 移除自动续期配置"
-    print_status "warning" "  这将导致所有HTTPS网站无法访问！"
+    print_status "warning" "⚠️  Important notice:"
+    print_status "warning" "  Uninstalling Certbot will:"
+    print_status "warning" "  • Remove certbot program files"
+    print_status "warning" "  • Delete all installed SSL certificates (optional)"
+    print_status "warning" "  • Remove auto-renewal configuration"
+    print_status "warning" "  This will cause all HTTPS websites to become inaccessible!"
     echo ""
 
-    # 询问是否删除证书
+    # Ask whether to delete certificates
     local delete_certs=false
-    if confirm_action "是否同时删除所有SSL证书？"; then
+    if confirm_action "Also delete all SSL certificates?"; then
         delete_certs=true
     else
-        print_status "info" "保留SSL证书文件"
+        print_status "info" "Keeping SSL certificate files"
     fi
 
-    # 最终确认
+    # Final confirmation
     echo ""
-    print_status "info" "即将执行的操作："
-    print_status "info" "  • 卸载Certbot程序"
+    print_status "info" "Operations to be performed:"
+    print_status "info" "  • Uninstall Certbot"
     if $delete_certs; then
-        print_status "info" "  • 删除所有SSL证书"
+        print_status "info" "  • Delete all SSL certificates"
     fi
-    print_status "info" "  • 移除自动续期配置"
+    print_status "info" "  • Remove auto-renewal configuration"
     echo ""
 
-    confirm_action "确认要卸载Certbot吗？此操作不可逆！"
+    confirm_action "Confirm uninstalling Certbot? This action is irreversible!"
     if [[ $? -ne 0 ]]; then
-        print_status "info" "操作已取消"
+        print_status "info" "Operation cancelled"
         return 2
     fi
 
-    print_status "info" "开始卸载Certbot..."
+    print_status "info" "Starting Certbot uninstallation..."
 
-    # 根据安装方式选择卸载方法
+    # Choose uninstall method based on installation type
     if [[ -f /etc/debian_version ]]; then
         # Debian/Ubuntu
         if check_root; then
-            print_status "info" "使用apt卸载..."
+            print_status "info" "Uninstalling with apt..."
             apt remove --purge -y certbot python3-certbot-nginx python3-certbot-apache 2>/dev/null || true
             apt autoremove -y 2>/dev/null || true
         else
-            print_status "error" "需要root权限进行卸载"
-            print_status "info" "请运行: sudo $0 uninstall"
+            print_status "error" "Root privileges required for uninstallation"
+            print_status "info" "Please run: sudo $0 uninstall"
             return 2
         fi
     elif [[ -f /etc/redhat-release ]]; then
         # CentOS/RHEL
         if check_root; then
-            print_status "info" "使用yum卸载..."
+            print_status "info" "Uninstalling with yum..."
             yum remove -y certbot python3-certbot-nginx python3-certbot-apache 2>/dev/null || true
         else
-            print_status "error" "需要root权限进行卸载"
-            print_status "info" "请运行: sudo $0 uninstall"
+            print_status "error" "Root privileges required for uninstallation"
+            print_status "info" "Please run: sudo $0 uninstall"
             return 2
         fi
     elif command -v brew &> /dev/null; then
         # macOS
-        print_status "info" "使用brew卸载..."
+        print_status "info" "Uninstalling with brew..."
         brew uninstall certbot 2>/dev/null || true
     else
-        print_status "warning" "无法确定安装方式，尝试手动清理..."
+        print_status "warning" "Cannot determine installation method, attempting manual cleanup..."
     fi
 
-    # 删除证书文件
+    # Delete certificate files
     if $delete_certs && check_root; then
-        print_status "info" "删除SSL证书文件..."
+        print_status "info" "Deleting SSL certificate files..."
         rm -rf "${LETSENCRYPT_DIR}" 2>/dev/null || true
     fi
 
-    # 移除自动续期配置
+    # Remove auto-renewal configuration
     if check_root; then
-        print_status "info" "移除自动续期配置..."
-        # 移除systemd timer
+        print_status "info" "Removing auto-renewal configuration..."
+        # Remove systemd timer
         systemctl stop certbot.timer 2>/dev/null || true
         systemctl disable certbot.timer 2>/dev/null || true
         rm -f /etc/systemd/system/certbot.service /etc/systemd/system/certbot.timer 2>/dev/null || true
         systemctl daemon-reload 2>/dev/null || true
 
-        # 移除cron任务
+        # Remove cron jobs
         (crontab -l 2>/dev/null | grep -v "certbot renew") | crontab - 2>/dev/null || true
     fi
 
-    # 验证卸载结果
+    # Verify uninstall result
     if ! command -v certbot &> /dev/null; then
-        print_status "success" "Certbot卸载成功！"
+        print_status "success" "Certbot uninstalled successfully!"
         if $delete_certs; then
-            print_status "info" "SSL证书已删除"
+            print_status "info" "SSL certificates deleted"
         else
-            print_status "info" "SSL证书文件保留在 ${LETSENCRYPT_DIR}/"
+            print_status "info" "SSL certificate files kept at ${LETSENCRYPT_DIR}/"
         fi
     else
-        print_status "error" "Certbot卸载失败，请手动清理"
+        print_status "error" "Certbot uninstallation failed, please clean up manually"
         return 1
     fi
 }

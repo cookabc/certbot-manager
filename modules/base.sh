@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# 基础架构模块 - 提供通用工具函数和基础配置
+# Base module - Provides common utility functions and base configuration
 
-# Source guard: 防止重复加载
+# Source guard: Prevent duplicate loading
 [[ -n "${_BASE_SH_LOADED:-}" ]] && return 0
 _BASE_SH_LOADED=1
 
-# 颜色定义
+# Color definitions
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -14,15 +14,15 @@ BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
 NC='\033[0m' # No Color
 
-# 版本信息
+# Version information
 VERSION="2.0.0"
 GITHUB_REPO="https://github.com/cookabc/certbot-manager"
 
-# 系统路径定义
+# System path definitions
 LETSENCRYPT_DIR="/etc/letsencrypt"
 NGINX_DIR="/etc/nginx"
 
-# 检查是否为root用户
+# Check if running as root
 check_root() {
     if [[ $EUID -eq 0 ]]; then
         return 0
@@ -31,31 +31,31 @@ check_root() {
     fi
 }
 
-# 日志记录函数
+# Logging function
 log_message() {
     local level=$1
     local message=$2
     
-    # 检查是否配置了日志文件
+    # Check if log file is configured
     if [[ -n "${LOGGING_FILE:-}" ]]; then
         local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-        # 确保日志目录存在
+        # Ensure log directory exists
         local log_dir=$(dirname "$LOGGING_FILE")
         if [[ ! -d "$log_dir" ]]; then
             mkdir -p "$log_dir" 2>/dev/null || return
         fi
         
-        # 写入日志
+        # Write to log
         echo "[$timestamp] [$level] $message" >> "$LOGGING_FILE" 2>/dev/null || true
     fi
 }
 
-# 显示带颜色的消息
+# Display colored messages
 print_status() {
     local status=$1
     local message=$2
     
-    # 记录日志
+    # Log the message
     log_message "$status" "$message"
 
     case $status in
@@ -77,7 +77,7 @@ print_status() {
     esac
 }
 
-# 确认操作函数
+# Confirmation prompt function
 confirm_action() {
     local message=$1
 
@@ -87,47 +87,47 @@ confirm_action() {
 
         case "$confirm" in
             [yY]|[yY][eE][sS])
-                return 0  # 返回码0表示确认
+                return 0  # Return 0 means confirmed
                 ;;
             [nN]|[nN][oO]|"")
-                return 1  # 返回码1表示取消
+                return 1  # Return 1 means cancelled
                 ;;
             *)
-                print_status "info" "请输入 y(是) 或 n(否)"
+                print_status "info" "Please enter y(yes) or n(no)"
                 ;;
         esac
     done
 }
 
-# 检测certbot模式
-# 返回: nginx 或 standalone
+# Detect certbot mode
+# Returns: nginx or standalone
 detect_certbot_mode() {
-    # 先检查nginx是否可用
+    # First check if nginx is available
     if command -v nginx &> /dev/null; then
-        # 检查certbot是否有nginx插件
+        # Check if certbot has nginx plugin
         if certbot plugins 2>/dev/null | grep -q "nginx"; then
-            # 不使用sudo检查配置，避免权限问题
-            # 因为实际运行时certbot会使用sudo
+            # Don't check config with sudo to avoid permission issues
+            # Because certbot will use sudo during actual execution
             local nginx_conf_check
             nginx_conf_check=$(sudo nginx -c "${NGINX_DIR}/nginx.conf" -t 2>&1)
             if [[ $? -eq 0 ]]; then
                 echo nginx
                 return 0
             else
-                print_status "warning" "Nginx配置无效: $nginx_conf_check"
-                print_status "warning" "将使用standalone模式"
+                print_status "warning" "Nginx configuration invalid: $nginx_conf_check"
+                print_status "warning" "Will use standalone mode"
             fi
         else
-            print_status "warning" "未检测到certbot nginx插件，将使用standalone模式"
+            print_status "warning" "Certbot nginx plugin not detected, will use standalone mode"
         fi
     else
-        print_status "warning" "未检测到Nginx，将使用standalone模式"
+        print_status "warning" "Nginx not detected, will use standalone mode"
     fi
     echo standalone
     return 0
 }
 
-# 启动nginx服务
+# Start nginx service
 start_nginx() {
     if command -v systemctl &> /dev/null; then
         sudo systemctl start nginx
@@ -138,7 +138,7 @@ start_nginx() {
     fi
 }
 
-# 停止nginx服务
+# Stop nginx service
 stop_nginx() {
     if command -v systemctl &> /dev/null; then
         sudo systemctl stop nginx
@@ -149,7 +149,7 @@ stop_nginx() {
     fi
 }
 
-# 检查nginx服务状态
+# Check nginx service status
 check_nginx_status() {
     if command -v systemctl &> /dev/null; then
         systemctl is-active --quiet nginx
@@ -161,7 +161,7 @@ check_nginx_status() {
     return $?
 }
 
-# 域名转换为Punycode（简化版）
+# Convert domain to Punycode (simplified)
 convert_to_punycode() {
     local domain=$1
     domain=${domain//$'\r'/}
@@ -181,8 +181,8 @@ convert_to_punycode() {
     domain=${domain//$'－'/-}
     domain=${domain//$'．'/'.'}
     domain=${domain//$'。'/'.'}
-    # 允许通配符域名（以*开头）
-    # 简化正则表达式，确保正确匹配通配符域名
+    # Allow wildcard domains (starting with *)
+    # Simplified regex to ensure correct wildcard domain matching
     if [[ "$domain" == \*.* ]] || [[ "$domain" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]]; then
         echo "$domain"
         return 0
@@ -190,38 +190,38 @@ convert_to_punycode() {
     return 1
 }
 
-# 加载配置文件
+# Load configuration file
 load_config() {
     local config_file="$1"
     if [[ -f "$config_file" ]]; then
         local current_section=""
         while IFS='=' read -r key value || [[ -n "$key" ]]; do
-            # 忽略注释和空行
+            # Ignore comments and empty lines
             [[ $key =~ ^#.* ]] && continue
             [[ -z $key ]] && continue
             
-            # 处理section headers [section]
+            # Handle section headers [section]
             if [[ $key =~ ^\[(.*)\]$ ]]; then
                 current_section="${BASH_REMATCH[1]}"
                 continue
             fi
             
-            # 移除行内注释
+            # Remove inline comments
             value=$(echo "$value" | sed 's/[[:space:]]*#.*//')
-            # 移除首尾空格 (使用 sed 替代 xargs 避免引号/反斜杠被解析)
+            # Remove leading/trailing whitespace (using sed instead of xargs to avoid quotes/backslash being parsed)
             key=$(echo "$key" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
             value=$(echo "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
             
             if [[ -n $current_section && -n $key ]]; then
-                # 构造变量名: SECTION_KEY (大写)
+                # Construct variable name: SECTION_KEY (uppercase)
                 local var_name=$(echo "${current_section}_${key}" | tr '[:lower:]' '[:upper:]')
-                # 安全检查: 只允许已知前缀的变量名，防止任意环境变量注入
+                # Security check: Only allow known prefix variable names to prevent arbitrary env var injection
                 case "$var_name" in
                     CERTBOT_*|RENEWAL_*|NGINX_*|LOGGING_*|DNS_*)
                         export "$var_name"="$value"
                         ;;
                     *)
-                        # 忽略未知配置项，避免注入风险
+                        # Ignore unknown config items to avoid injection risk
                         ;;
                 esac
             fi
@@ -229,36 +229,36 @@ load_config() {
     fi
 }
 
-# 显示帮助信息
+# Show help information
 show_help() {
-    echo "🔧 Certbot SSL证书管理工具 v$VERSION"
+    echo "🔧 Certbot SSL Certificate Management Tool v$VERSION"
     echo ""
-    echo "📦 GitHub仓库: $GITHUB_REPO"
+    echo "📦 GitHub Repository: $GITHUB_REPO"
     echo ""
-    echo "用法: $0 [命令] [选项]"
+    echo "Usage: $0 [command] [options]"
     echo ""
-    echo "命令:"
-    echo "  status           显示系统状态"
+    echo "Commands:"
+    echo "  status           Show system status"
     echo ""
-    echo "Certbot管理:"
-    echo "  install          安装certbot"
-    echo "  uninstall        卸载certbot"
+    echo "Certbot Management:"
+    echo "  install          Install certbot"
+    echo "  uninstall        Uninstall certbot"
     echo ""
-    echo "SSL证书管理:"
-    echo "  list             列出已安装证书"
-    echo "  create <domain>  为域名创建SSL证书"
-    echo "  delete <domain>  卸载SSL证书"
-    echo "  renew            手动续期证书"
-    echo "  renew-setup      设置自动续期"
-    echo "  nginx-check      检查nginx配置"
+    echo "SSL Certificate Management:"
+    echo "  list             List installed certificates"
+    echo "  create <domain>  Create SSL certificate for domain"
+    echo "  delete <domain>  Delete SSL certificate"
+    echo "  renew            Manually renew certificates"
+    echo "  renew-setup      Setup auto-renewal"
+    echo "  nginx-check      Check nginx configuration"
     echo ""
-    echo "其他:"
-    echo "  help             显示帮助信息"
-    echo "  version          显示版本信息"
+    echo "Other:"
+    echo "  help             Show help information"
+    echo "  version          Show version information"
     echo ""
-    echo "示例:"
-    echo "  $0 status                     # 检查系统状态"
-    echo "  $0 create example.com         # 创建SSL证书"
-    echo "  $0 renew-setup                # 设置自动续期"
+    echo "Examples:"
+    echo "  $0 status                     # Check system status"
+    echo "  $0 create example.com         # Create SSL certificate"
+    echo "  $0 renew-setup                # Setup auto-renewal"
     echo ""
 }
