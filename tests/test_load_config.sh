@@ -83,23 +83,23 @@ test_edge_cases() {
     # 2. Section 之外的键
     local config_content="
 global_key=value
-[section]
+[dns]
 local_key=value
 "
     local config_file=$(setup_test_config "$config_content")
 
     # 清除可能存在的变量
     unset GLOBAL_KEY
-    unset SECTION_LOCAL_KEY
+    unset DNS_LOCAL_KEY
 
     load_config "$config_file"
 
     assert_equals "" "${GLOBAL_KEY:-}" "应该忽略 section 之外的键"
-    assert_equals "value" "$SECTION_LOCAL_KEY" "应该加载 section 之内的键"
+    assert_equals "value" "$DNS_LOCAL_KEY" "应该加载 section 之内的键"
 
     teardown_test_config "$config_file"
     unset GLOBAL_KEY
-    unset SECTION_LOCAL_KEY
+    unset DNS_LOCAL_KEY
 }
 
 # 运行测试
